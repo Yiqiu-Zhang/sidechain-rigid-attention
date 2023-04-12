@@ -37,8 +37,8 @@ from foldingdiff import plotting
 from foldingdiff import utils
 from foldingdiff import custom_metrics as cm
 from torchsummary import summary
-#srun -p bio_s1 -n 1 --ntasks-per-node=1 --cpus-per-task=40 --gres=gpu:8 python train.py /mnt/petrelfs/lvying/code/sidechain-diffusion/config_jsons/cath_full_angles_cosine.json --dryrun
-#srun -p bio_s1 -n 1 --ntasks-per-node=1 --cpus-per-task=40 --gres=gpu:8 python train.py /mnt/petrelfs/lvying/code/sidechain-diffusion/config_jsons/cath_full_angles_cosine.json --dryrun  -o resutl_esm3b                        
+
+#srun -p bio_s1 -n 1 --ntasks-per-node=1 --cpus-per-task=20 --gres=gpu:1 python train.py /mnt/petrelfs/lvying/code/sidechain-rigid-attention/config_jsons/cath_full_angles_cosine.json --dryrun  -o result_test                        
 
 from pytorch_lightning.loggers import TensorBoardLogger
 
@@ -499,7 +499,7 @@ def train(
         log_every_n_steps=min(1, len(train_dataloader)),  # Log >= once per epoch
         accelerator=accelerator,
         strategy=strategy,
-        gpus=8,
+        gpus=1,
         enable_progress_bar=False,
         move_metrics_to_cpu=False,  # Saves memory
     )

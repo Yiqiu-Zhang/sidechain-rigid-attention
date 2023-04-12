@@ -1,4 +1,4 @@
-name: foldingdiff
+name: sidechain
 channels:
   - defaults
   - anaconda

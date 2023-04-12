@@ -266,7 +266,7 @@ class BertForDiffusionBase(nn.Module):
         #BertPreTrainedModel.__init__(self, config)
         #Struct2Seq.__init__(self)
         #end===================yinglv====================================
-
+        
         self.config = config
         if self.config.is_decoder:
             raise NotImplementedError
@@ -418,9 +418,12 @@ class BertForDiffusionBase(nn.Module):
 
     def forward(
         self,
-        inputs: torch.Tensor,
-        coords: torch.Tensor,
-        seq_embedding:torch.Tensor,
+       # inputs: torch.Tensor,
+        angles: torch.Tensor, # angles with noise [batch,N,4,4]
+        rigid_type: torch.Tensor, #sidechain [batch,N,4,19]
+        rigid_property: torch.Tensor, # [batch,N,4]
+        coords: torch.Tensor, #backbone  # [batch,N,4,3]
+        seq_embedding:torch.Tensor, # [batch,N,1280]
         timestep: torch.Tensor,  # Tensor of shape batch_length with time indices
         attention_mask: torch.Tensor,
         position_ids: Optional[torch.Tensor] = None,
@@ -447,6 +450,78 @@ class BertForDiffusionBase(nn.Module):
             If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
             `past_key_values`).
         """
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        '''
+        rigid = embedding_f(rigid_type,rigid_property)
+        angles = angles + time_encoded
+        h = cat(rigid,seq)
+        z = (r,r_v, o)
+        for layer in layers:
+            h, anlges = structure(h, angles,seq)
+            
+        
+        
+        def structure(h,angles,seq):
+            
+            seq_p = pari_seq(seq)
+            z = frame(angles)
+            v_v = linear(h)
+            scale = linear(z[0])
+            weight = softmax(scale*q*k+)
+            o1= 
+            o2=
+            o3=
+            h_i
+            angle = predict(hi)
+            return h_i, angle
+        
+        return angles
+        '''
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
         output_attentions = (
             output_attentions
             if output_attentions is not None
