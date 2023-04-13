@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
 from functools import lru_cache
 from typing import Tuple, Any, Sequence, Optional
 
@@ -53,6 +54,10 @@ class Rotation:
         Return the underlying tensor rather than the Rotation object
         """
         return self._rot_mats
+
+    def transpose(self):
+
+        return torch.transpose(self._rot_mats, -2, -1)
 
 
     def unsqueeze(self, dim: int) -> Rotation:
@@ -166,6 +171,26 @@ class Rigid:
 
         return Rigid(new_rots, new_trans)
 
+    def edge(self):
+
+        '''
+        Forming fully connected graph edge using the rigid object
+        Args:
+            rigid:
+
+        Returns:
+        '''
+        rot_T = self.rot.transpose()
+        rot = self.rot.get_rot_mat()
+        orientation = torch.einsum('bmij,bnjk->bmnik', rot_T, rot)
+
+        displacement = self.trans[...,None,:] - self.trans[...,None,:,:]
+        distance = torch.linalg.vector_norm(displacement,dim=-1)
+        direction = F.normalize(displacement,dim=-1)
+        altered_direction = torch.einsum('bmij,bmnj->bmnj',rot_T,direction)
+
+        return distance,altered_direction,orientation
+
     def unsqueeze(self, dim: int) -> Rigid:
 
         if dim >= len(self.shape):
@@ -226,6 +251,11 @@ def Rigid_mult(rigid_1: Rigid,
     new_trans = rot_vec(rot1, rigid_2.trans)
 
     return  Rigid(Rotation(new_rot), new_trans)
+
+def flatten_rigid(rigid: Rigid) -> Rigid:
+    flat_rot = rigid.rot.get_rot_mat().flatten(start_dim=-4, end_dim=-3)
+    flat_trans = rigid.trans.flatten(start_dim=-3, end_dim=-2)
+    return Rigid(Rotation(flat_rot), flat_trans)
 
 def rigid_mul_vec(rigid: Rigid,
                   vec: torch.Tensor) -> torch.Tensor:

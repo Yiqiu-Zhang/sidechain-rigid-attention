@@ -6,11 +6,12 @@ from constant import (restype_rigid_group_default_frame,
                       restype_atom14_mask,
                       restype_atom14_rigid_group_positions,
                       restype_atom37_mask,
-                      make_atom14_37_list
+                      make_atom14_37_list,
+                      restype_frame_mask
                       )
 import geometry
 import protein
-import os, sys
+import os
 
 def rotate_sidechain(
                     restype_idx:torch.Tensor, # [*, N]
@@ -153,7 +154,7 @@ def atom14_to_atom37(atom14, aa_idx): # atom14: [*, N, 14, 3]
 
 def torsion_to_position(aatype_idx: torch.Tensor, # [*, N]
                         backbone_position: torch.Tensor, # [*, N, 4, 3] (N, CA, C, O)
-                        angles: torch.Tensor, # [*, N, 4, 2] (X1, X2, X3, X4) (sin, cos)
+                        angles: torch.Tensor, # [*, N, 4] (X1, X2, X3, X4)
                         ): # -> [*, N, 14, 3]
     """Compute Side Chain Atom position using the predicted torsion
     angle and the fixed backbone coordinates.
@@ -202,9 +203,63 @@ def torsion_to_position(aatype_idx: torch.Tensor, # [*, N]
 
     return final_pos
 
+def torsion_to_frame(aatype_idx: torch.Tensor, # [*, N]
+                    backbone_position: torch.Tensor, # [*, N, 4, 3] (N, CA, C, O)
+                    angles: torch.Tensor, # [*, N, 4] (X1, X2, X3, X4)
+                    ): # -> [*, N, 5] Rigid
+    """Compute all residue frames given torsion
+        angles and the fixed backbone coordinates.
 
+        Args:
+            aatype_idx: aatype for each residue
+            backbone_position: backbone coordinate for each residue
+            angles: torsion angles for each residue
 
-    
+        return:
+            all frames [N, 5] Rigid
+        """
+
+    angles_sin_cos = torch.stack([torch.sin(angles), torch.cos(angles)], dim=-1)
+
+    # side chain frames [*, N, 5] Rigid
+    # We create 3 dummy identity matrix for omega and other angles which is not used in the frame attention process
+    sc_to_bb = rotate_sidechain(aatype_idx, angles_sin_cos)[..., [0,4,5,6,7]]
+
+    # [*, N] Rigid
+    bb_to_gb = geometry.get_gb_trans(backbone_position)
+
+    all_frames_to_global = geometry.Rigid_mult(bb_to_gb[..., None], sc_to_bb)
+
+    return all_frames_to_global
+
+def frame_to_edge(frames, # [*, N, 5]
+                  aatype_idx # [*, N]
+                  ):
+    '''
+    compute edge information between two frames distance, direction, orientation
+    Args:
+        frames: protein rigid frames [*, N, 5]
+
+    Returns:
+
+    '''
+
+    # [20, 5]
+    restype_frame5_mask = torch.tensor(restype_frame_mask)
+
+    # [*, N, 5]
+    frame_mask = restype_frame5_mask[aatype_idx, ...]
+
+    # [*, Nx5]
+    flat_mask= torch.flatten(frame_mask, start_dim= -2)
+    # [*, Nx5, Nx5]
+    frame_pair_mask = torch.bmm(flat_mask.unsqueeze(-1), flat_mask.unsqueeze(-2))
+    # [*, Nx5]
+    flatten_frame = geometry.flatten_rigid(frames)
+
+    distance, altered_direction, orientation = flatten_frame.edge()
+
+    return frame_pair_mask, distance, altered_direction, orientation
 
 #############################################################
 #result = {}

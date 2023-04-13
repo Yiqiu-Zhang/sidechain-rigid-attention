@@ -305,6 +305,29 @@ chi_angles_mask = [
     [1.0, 1.0, 0.0, 0.0],  # TYR
     [1.0, 0.0, 0.0, 0.0],  # VAL
 ]
+#
+restype_frame_mask = [
+    [1.0, 0.0, 0.0, 0.0, 0.0],  # ALA
+    [1.0, 1.0, 1.0, 1.0, 1.0],  # ARG
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # ASN
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # ASP
+    [1.0, 1.0, 0.0, 0.0, 0.0],  # CYS
+    [1.0, 1.0, 1.0, 1.0, 0.0],  # GLN
+    [1.0, 1.0, 1.0, 1.0, 0.0],  # GLU
+    [1.0, 0.0, 0.0, 0.0, 0.0],  # GLY
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # HIS
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # ILE
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # LEU
+    [1.0, 1.0, 1.0, 1.0, 1.0],  # LYS
+    [1.0, 1.0, 1.0, 1.0, 0.0],  # MET
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # PHE
+    [1.0, 0.0, 0.0, 0.0, 0.0],  # PRO # only PRO different from Alphafold chi_angles_mask
+    [1.0, 1.0, 0.0, 0.0, 0.0],  # SER
+    [1.0, 1.0, 0.0, 0.0, 0.0],  # THR
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # TRP
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # TYR
+    [1.0, 1.0, 0.0, 0.0, 0.0],  # VAL
+]
 
 # Format: The list for each AA type contains chi1, chi2, chi3, chi4 in
 # this order (or a relevant subset from chi1 onwards). ALA and GLY don't have
@@ -393,7 +416,6 @@ restype_atom14_rigid_group_positions = np.zeros([21, 14, 3], dtype=np.float32)
 restype_rigid_group_default_frame = np.zeros([21, 8, 4, 4], dtype=np.float32)
 restype_atom37_mask = np.zeros([21, 37], dtype=np.float32)
 
-
 def make_rigid_trans(ex, y_vec, t):
     """Create rigid rotation and translation matrix with the given axis and translation vec
     Return a  4x4 numpy array"""
@@ -423,6 +445,7 @@ def _make_rigid_group_constants():
 
             atomtype = atom_order[atomname]
             restype_atom37_mask[residx, atomtype] = 1
+
             atom14idx = restype_name_to_atom14_names[restype3].index(atomname)
             restype_atom14_to_rigid_group[residx, atom14idx] = group_idx
             restype_atom14_mask[residx, atom14idx] = 1
@@ -432,11 +455,12 @@ def _make_rigid_group_constants():
         # backbone to backbone is the identity transform
         restype_rigid_group_default_frame[residx, 0, :, :] = np.eye(4)
 
+
         # pre-omega-frame to backbone (currently dummy identity matrix)
         restype_rigid_group_default_frame[residx, 1, :, :] = np.eye(4)
-
         restype_rigid_group_default_frame[residx, 2, :, :] = np.eye(4)
         restype_rigid_group_default_frame[residx, 3, :, :] = np.eye(4)
+
 
         '''
         主链原子坐标暂时不由frame计算，因为这种计算方式忽略了肽键的存在，
