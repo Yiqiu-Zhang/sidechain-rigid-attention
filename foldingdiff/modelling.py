@@ -38,6 +38,7 @@ from foldingdiff.datasets import FEATURE_SET_NAMES_TO_ANGULARITY
 from graph_transformer.struct2seq import Struct2Seq
 from graph_transformer.self_attention import *
 from graph_transformer.protein_features import *
+from rigid_attention.structure_transformer import *
 #end=====================yinglv====================================
 import tracemalloc
 
@@ -252,11 +253,16 @@ class BertForDiffusionBase(nn.Module):
         ft_is_angular: List[bool] = [True, True, True, True],
         ft_names: Optional[List[str]] = None,
         time_encoding: TIME_ENCODING = "gaussian_fourier",
-        decoder: DECODER_HEAD = "mlp",
-        node_features=384, edge_features=384,
-        hidden_dim=384, num_encoder_layers=12, num_decoder_layers=0,
-        vocab=20, k_neighbors=30, protein_features='full', augment_eps=0.,
-        dropout=0.1, forward_attention_decoder=True, use_mpnn=False,
+        d_model: int = 384,
+        d_esm_seq: int = 1024,
+        n_rigid_type: int = 5,
+        n_rigid_property: int = 20,
+        n_layers: int = 4,
+        n_heads: int = 8,
+        d_ff: int = 1024, #hidden layer dim
+        d_angles:int = 4,
+        max_seq_len: int = 5000,
+        dropout: float = 0.1
     ) -> None:
         """
         dim should be the dimension of the inputs
@@ -283,32 +289,40 @@ class BertForDiffusionBase(nn.Module):
 
         # Needed to project the low dimensional input to hidden dim
         
-        self.inputs_to_hidden_dim = nn.Linear(
-            in_features=n_inputs, out_features=config.hidden_size
-        )
+       # self.inputs_to_hidden_dim = nn.Linear(
+       #     in_features=n_inputs, out_features=config.hidden_size
+       # )
 
        # self.seq_to_hidden_dim = nn.Linear(in_features=320, out_features=config.hidden_size)
-        temp_dim = 320+config.hidden_size
-        self.to_hidden_dim = nn.Linear(in_features=temp_dim, out_features=config.hidden_size)
+       # temp_dim = 320+config.hidden_size
+       # self.to_hidden_dim = nn.Linear(in_features=temp_dim, out_features=config.hidden_size)
         
-        self.embeddings = BertEmbeddings(config)
+       # self.embeddings = BertEmbeddings(config)
    
         #start===================yinglv====================================
 
-        self.encoder = Struct2Seq(node_features, edge_features,
-        hidden_dim, num_encoder_layers, num_decoder_layers,
-        vocab, k_neighbors, protein_features, augment_eps,
-        dropout, forward_attention_decoder, use_mpnn)
+        self.encoder = Ridge_Transformer(
+            d_model,
+            d_esm_seq,
+            n_rigid_type,
+            n_rigid_property ,
+            n_layers,
+            n_heads,
+            d_ff, #hidden layer dim
+            d_angles,
+            max_seq_len,
+            dropout,
+        )
 
         #end===================yinglv====================================
 
  # Set up the network to project token representation to our four outputs
-        if decoder == "linear":
-            self.token_decoder = nn.Linear(config.hidden_size, n_inputs)
-        elif decoder == "mlp":
-            self.token_decoder = AnglesPredictor(config.hidden_size, n_inputs)
-        else:
-            raise ValueError(f"Unrecognized decoder: {decoder}")
+      #  if decoder == "linear":
+     #       self.token_decoder = nn.Linear(config.hidden_size, n_inputs)
+     #   elif decoder == "mlp":
+     #       self.token_decoder = AnglesPredictor(config.hidden_size, n_inputs)
+     #   else:
+     #       raise ValueError(f"Unrecognized decoder: {decoder}")
 
         # Set up the time embedder
         if time_encoding == "gaussian_fourier":
@@ -419,13 +433,14 @@ class BertForDiffusionBase(nn.Module):
     def forward(
         self,
        # inputs: torch.Tensor,
-        angles: torch.Tensor, # angles with noise [batch,N,4,4]
-        rigid_type: torch.Tensor, #sidechain [batch,N,4,19]
-        rigid_property: torch.Tensor, # [batch,N,4]
-        coords: torch.Tensor, #backbone  # [batch,N,4,3]
-        seq_embedding:torch.Tensor, # [batch,N,1280]
-        timestep: torch.Tensor,  # Tensor of shape batch_length with time indices
-        attention_mask: torch.Tensor,
+        side_chain_angles: torch.Tensor, #[batch,128,4]
+        backbone_coords: torch.Tensor, #[batch,128,4,3]
+        aatype_idx: torch.Tensor,#[batch,128,4,3]
+        time: torch.Tensor, 
+        rigid_mask: torch.Tensor,
+        x_seq_esm: torch.Tensor,  #[batch,128,1024]
+        x_rigid_type: torch.Tensor, #[batch,128,5,19] x_rigid_type[-1]=one hot
+        x_rigid_proterty: torch.Tensor, #[batch,128,5,6]
         position_ids: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
@@ -450,76 +465,6 @@ class BertForDiffusionBase(nn.Module):
             If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
             `past_key_values`).
         """
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        '''
-        rigid = embedding_f(rigid_type,rigid_property)
-        angles = angles + time_encoded
-        h = cat(rigid,seq)
-        z = (r,r_v, o)
-        for layer in layers:
-            h, anlges = structure(h, angles,seq)
-            
-        
-        
-        def structure(h,angles,seq):
-            
-            seq_p = pari_seq(seq)
-            z = frame(angles)
-            v_v = linear(h)
-            scale = linear(z[0])
-            weight = softmax(scale*q*k+)
-            o1= 
-            o2=
-            o3=
-            h_i
-            angle = predict(hi)
-            return h_i, angle
-        
-        return angles
-        '''
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         
         
         output_attentions = (
@@ -567,68 +512,23 @@ class BertForDiffusionBase(nn.Module):
         extended_attention_mask2 = extended_attention_mask1.type_as(attention_mask)
         extended_attention_mask = (1.0 - extended_attention_mask2) * -10000.0
         
-       # print('attention_mask.shape=',attention_mask.shape)
-       # print('extended_attention_mask1.shape=',extended_attention_mask1.shape)
-       # print('extended_attention_mask2.shape',extended_attention_mask2.shape)
-       # print('extended_attention_mask.shape',extended_attention_mask.shape)
-       # print('attention_mask=',attention_mask)
-       # print('extended_attention_mask1=',extended_attention_mask1)
-       # print('extended_attention_mask2',extended_attention_mask2)
-       # print('extended_attention_mask',extended_attention_mask)
-        
-        # Prepare head mask if needed
-        # 1.0 in head_mask indicate we keep the head
-        # attention_probs has shape bsz x n_heads x N x N
-        # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
-        # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
-        # msk = torch.ones(size=(self.config.num_attention_heads,))
-        # msk = msk.type_as(inputs)
-        # head_mask = self.get_head_mask(msk, self.config.num_hidden_layers)
+
 
         assert len(inputs.shape) == 3  # batch_size, seq_length, features
-        t = inputs
-       # print('=========================orig=============================',inputs.shape)
-       # print('=========================orig=============================',inputs)
-        inputs_upscaled = self.inputs_to_hidden_dim(inputs)  # Batch * seq_len * dim
-      #  print('=========================inputs_upscaled=============================',inputs_upscaled.shape)
-      #  print('=========================seq_embedding=============================',seq_embedding.shape)
-        inputs_upscaled = torch.cat([inputs_upscaled,seq_embedding],dim=2)
-        inputs_upscaled = self.to_hidden_dim(inputs_upscaled)
-        #seq_embedding = self.seq_to_hidden_dim(seq_embedding)
-        #inputs_upscaled =  inputs_upscaled+seq_embedding
-        
-        
-        #+
-        #print('=========================inputs_upscaled=============================',inputs_upscaled.shape)
-        #inputs_upscaled = self.r1(inputs_upscaled)
-        #print('=============input device============',inputs.device)
-        # Pass through embeddings
-        inputs_upscaled = self.embeddings(inputs_upscaled, position_ids=position_ids)
-        #inputs_upscaled = self.r2(inputs_upscaled)
-        # timestep is (batch, 1), squeeze to (batch,)
-        # embedding gets to (batch, embed_dim) -> unsqueee to (batch, 1, dim)
-        time_encoded = self.time_embed(timestep.squeeze(dim=-1)).unsqueeze(1)
-        inputs_with_time = inputs_upscaled + time_encoded # 角度+时间 embedding
-        #print('=========================time_encoded=============================',time_encoded)
-        #print('=========================inputs_with_time=============================',inputs_with_time)
-        #start===================yinglv====================================
-       # coords = nerf.nerf_build_batch_O(
-        #$     phi=inputs[:, :, 0],
-        #     psi=inputs[:, :, 1],
-        #     omega=inputs[:, :, 2],
-        #     bond_angle_n_ca_c=inputs[:, :, 3],
-       #      bond_angle_ca_c_n=inputs[:, :, 4],
-       #      bond_angle_c_n_ca=inputs[:, :, 5],
-       # )
-       # coords_1 = torch.reshape(coords, ((coords.shape[0], 128, 4, 3)))
-        #seq = seq
-      #$  print("=======================seq==================",coord_1)
-       # print("=======================seq==================",seq)
-        output = self.encoder(inputs_with_time, coords, attention_mask) 
-        per_token_decoded = self.token_decoder(output) 
 
-        # end===================yinglv====================================
-        return per_token_decoded
+        time_encoded = self.time_embed(timestep.squeeze(dim=-1)).unsqueeze(1)
+        
+        output = self.encoder(side_chain_angles,
+                              backbone_coords,
+                              aatype_idx,
+                              time,
+                              rigid_mask,
+                              x_seq_esm,
+                              x_rigid_type, 
+                              x_rigid_proterty
+        ) 
+
+        return output
 
 
 class BertForDiffusion(BertForDiffusionBase, pl.LightningModule):
@@ -649,6 +549,7 @@ class BertForDiffusion(BertForDiffusionBase, pl.LightningModule):
         lr_scheduler: LR_SCHEDULE = None,
         write_preds_to_dir: Optional[str] = None,
         **kwargs,
+        
     ):
         """Feed args to BertForDiffusionBase and then feed the rest into"""
         BertForDiffusionBase.__init__(self, **kwargs)

@@ -27,7 +27,6 @@ aatype_idx = torch.tensor(seq_pad)
 
 rigid_by_residue = structure_build.torsion_to_frame(aatype_idx, bb_coords, side_chain_angles) # add attention
 
-frame_pair_mask, distance, altered_direction, orientation = structure_build.frame_to_edge( 
-    rigid_by_residue, aatype_idx) #rigid feature
+frame_pair_mask, distance, altered_direction, orientation = structure_build.frame_to_edge(rigid_by_residue, aatype_idx) #rigid feature
 
 

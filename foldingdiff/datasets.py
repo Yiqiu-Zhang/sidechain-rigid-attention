@@ -795,6 +795,8 @@ class CathSideChainAnglesDataset(Dataset):
         seq = self.structures[index]["seq"]
         acid_embedding = self.structures[index]["acid_embedding"]
         chi_mask = self.structures[index]["chi_mask"]
+        rigid_type_onehot = self.structures[index]["rigid_type_onehot"]
+        rigid_property = self.structures[index]["rigid_property"]
        # print("&&&&&&&&&&&&&&&&&&&&&&&&angles&&&&&&&&&&&&&&&&&&",angles.shape)
        # print("&&&&&&&&&&&&&&&&&&&&&&&&coords&&&&&&&&&&&&&&&&&&",coords.shape)
        # print("&&&&&&&&&&&&&&&&&&&&&&&&seq&&&&&&&&&&&&&&&&&&",seq.shape)
@@ -873,13 +875,26 @@ class CathSideChainAnglesDataset(Dataset):
                 mode="constant",
                 constant_values=0,
             )
-        elif angles.shape[0] > self.pad:
+            rigid_type_onehot = np.pad(
+                rigid_type_onehot,
+                ((0, self.pad - rigid_type_onehot.shape[0]), (0, 0)),
+                mode="constant",
+                constant_values=0,
+            )
+            rigid_property = np.pad(
+                rigid_property,
+                ((0, self.pad - rigid_property.shape[0]), (0, 0)),
+                mode="constant",
+                constant_values=0,
+            )
             if self.trim_strategy == "leftalign":
                 angles = angles[: self.pad]
                 coords = coords[: self.pad]
                 acid_embedding = acid_embedding[: self.pad]
                 chi_mask = chi_mask[: self.pad]
                 seq = seq[: self.pad]
+                rigid_type_onehot = rigid_type_onehot[: self.pad]
+                rigid_property = rigid_property[: self.pad]
        #         print("*********************acid_embedding*******************",acid_embedding.shape)
       #          print("*********************seq*******************",seq.shape)
             elif self.trim_strategy == "randomcrop":
@@ -892,6 +907,8 @@ class CathSideChainAnglesDataset(Dataset):
                 acid_embedding = acid_embedding[start_idx:end_idx]
                 chi_mask = chi_mask[start_idx:end_idx]
                 seq = seq[start_idx:end_idx]
+                rigid_type_onehot = rigid_type_onehot[start_idx:end_idx]
+                rigid_property = rigid_property[start_idx:end_idx]
                 assert angles.shape[0] == coords.shape[0] == self.pad
             else:
                 raise ValueError(f"Unknown trim strategy: {self.trim_strategy}")
@@ -917,7 +934,8 @@ class CathSideChainAnglesDataset(Dataset):
         coords = torch.from_numpy(coords).float()
         acid_embedding = torch.from_numpy(acid_embedding).float()
         chi_mask = torch.from_numpy(chi_mask).int()
-        
+        rigid_type_onehot
+        rigid_property
         retval = {
             "angles": angles,
             "attn_mask": attn_mask,
@@ -927,6 +945,8 @@ class CathSideChainAnglesDataset(Dataset):
             "seq": seq,
             "acid_embedding": acid_embedding,
             "chi_mask": chi_mask,
+            'rigid_type_onehot': rigid_type_onehot, #(L,5,20)
+            'rigid_property': rigid_property, # (L,5,6)
         }
         return retval
 

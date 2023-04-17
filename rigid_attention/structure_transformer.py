@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn
 from transformers.activations import get_activation
 from typing import *
+import structure_build
 seaborn.set_context(context="talk") 
 
 
@@ -24,7 +25,7 @@ class Ridig_Embeddings(nn.Module):
         self.mlp2d = nn.Sequential(
                   nn.Linear(d_model+d_model+d_model, d_model//2),
                   nn.ReLU(),
-                  nn.Linear(d_model/2, d_model)
+                  nn.Linear(d_model//2, d_model)
         )
         self.d_model = d_model
 
@@ -34,14 +35,14 @@ class Ridig_Embeddings(nn.Module):
         x_rigid_type: torch.Tensor,
         x_rigid_proterty: torch.Tensor,
     ) -> torch.Tensor: 
-        x_embed_rigid_type = self.embed_rigid_type(x_rigid_type)* math.sqrt(self.d_model) #[batch, L, 4, 512]
-        x_embed_rigid_proterty = self.embed_rigid_property(x_rigid_proterty)* math.sqrt(self.d_model) #[batch, L, 4, 512]
+        x_embed_rigid_type = self.embed_rigid_type(x_rigid_type)* math.sqrt(self.d_model) #[batch, L, 5, 128]
+        x_embed_rigid_proterty = self.embed_rigid_property(x_rigid_proterty)* math.sqrt(self.d_model) #[batch, L, 5, 128]
         x_seq = self.seq2d(x_seq_esm) #[batch, L, 512]
         
         x_seq = x_seq.unsqueeze(-2)
-        input = torch.cat([x_embed_rigid_type, x_embed_rigid_proterty,  x_seq.repeat(1, 1, 4, 1)], dim=-1)  #[batch, L, 4, 512*3]
+        input = torch.cat([x_embed_rigid_type, x_embed_rigid_proterty,  x_seq.repeat(1, 1, 4, 1)], dim=-1)  #[batch, L, 5, 128*3]
         
-        input_embed = self.mlp2d(input) #[batch, L, 4, 512]
+        input_embed = self.mlp2d(input) #[batch, L, 4, 128]
         
         return input_embed
     
@@ -117,33 +118,6 @@ class ConvRelativePositionalEncoding(nn.Module):
 
         return self.dropout(x)       
 
-# define ridig attention
-class Rigid_Attention(nn.Module):
-    def __init__(self, d_model):
-        super(Rigid_MultiHeadAttention, self).__init__()
-        self.d_model = d_model
-        self.query = nn.Linear(d_model, d_model)
-        self.key = nn.Linear(d_model, d_model)
-        self.value = nn.Linear(d_model, d_model)
-        self.value_3d = nn.Linear(d_model, 3)
-        self.fc = nn.Linear(d_model, d_model)
-    
-    def forward(
-        self, 
-        x,
-        seq_pair: torch.Tensor, # [batch, h, L, 1028] # pair?
-        frame: torch.Tensor, #[batch,h,L*4,?]
-        mask = None, 
-        dropout=None,
-    ):
-        q = self.query(x)
-        k = self.key(x)
-        v = self.value(x)
-        v_3d = self.value_3d(x)
-        
-
-
-
 
 # define the multi ridge attention
 class Rigid_MultiHeadAttention(nn.Module):
@@ -156,45 +130,49 @@ class Rigid_MultiHeadAttention(nn.Module):
         self.query = nn.Linear(d_model, d_model)
         self.key = nn.Linear(d_model, d_model)
         self.value = nn.Linear(d_model, d_model)
-        self.value_3d = nn.Linear(d_model, 3*n_heads)
-        self.fc = nn.Linear(2*d_model+3, d_model)
+        self.value_3d = nn.Linear(d_model, 3)
+        self.fc = nn.Linear(d_model+3, d_model)
 
-    def forward(self, x_rigid, sidechain_frame, seq_correlation_matrix, attention_mask=None):
+    def forward(self, x_rigid, altered_direction, orientation, attention_mask=None, frame_pair_mask=None, seq_correlation_matrix=None, distance =None):
         bsz = x_rigid.size(0)
-        q = self.query(x_rigid).view(bsz, -1, self.n_heads, self.head_dim).transpose(1, 2)  # (batch, n_heads, rigid_len, head_dim)
-        k = self.key(x_rigid).view(bsz, -1, self.n_heads, self.head_dim).transpose(1, 2)  # (batch, n_heads, rigid_len, head_dim)
-        v = self.value(x_rigid).view(bsz, -1, self.n_heads, self.head_dim).transpose(1, 2)  # (batch, n_heads, rigid_len, head_dim)
-        v_3d = self.value_3d(x_rigid).view(bsz, -1, self.n_heads, 3).transpose(1, 2) # (batch, n_heads, rigid_len, 3)
-        
-        scale = sidechain_frame['r']       #(batch, n_heads, seq_len, seq_len) ？
-        frame = sidechain_frame['frame']  #(batch, n_heads, seq_len, seq_len,3,3) ？
-        
+        q = self.query(x_rigid).view(bsz, -1, self.n_heads, self.head_dim).transpose(1, 2)  # [batch, n_heads, rigid_len, head_dim] [batch, 8, 128*5, 96]
+        k = self.key(x_rigid).view(bsz, -1, self.n_heads, self.head_dim).transpose(1, 2)  # [batch, 8, 128*5, 96]
+        v = self.value(x_rigid).view(bsz, -1, self.n_heads, self.head_dim).transpose(1, 2)  # [batch, 8, 128*5, 96]
+        #v_3d = self.value_3d(x_rigid).view(bsz, -1, self.n_heads, 3).transpose(1, 2) # (batch, n_heads, rigid_len, 3) [batch, 8, 128*5, 3]
+        v_3d = self.value_3d(x_rigid) #[batch, 128*5, 3]
         
         #seq_correlation_matrix # (batch, n_heads, seq_len, seq_len)
-        
-        
-        
-        frame_v3d = torch.matmul(frame,v_3d)
-        
+    
+        scores = torch.matmul(q, k.transpose(-2, -1)) / torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float)) #[batch, n_heads, rigid_len, rigid_len] [batch,8,128*5,128*5]
         if attention_mask is not None:
            # Mask invalid positions
            scores = scores.masked_fill_(attention_mask == 0, -1e9) 
-    
-        scores = torch.matmul(q, k.transpose(-2, -1)) / torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float)) #(batch, n_heads, rigid_len, rigid_len)
         
-        attn_weights = F.softmax(scores, dim=-1) #(batch, n_heads, rigid_len, rigid_len)
+        attn_weights = F.softmax(scores, dim=-1) # [batch,8,128*5,128*5] n_heads = 8
+        attn_v = torch.matmul(attn_weights, v)   # [batch,8,128*5,128*5]
+        attn_v = attn_v.transpose(1, 2).contiguous().view(bsz, -1, self.d_model)  # [batch,128*5,384]
+        
+        socres_merged = torch.sum(scores, dim=-3).squeeze(dim=-3)
+        attn_weights_merged = F.softmax(socres_merged, dim=-1) # [batch,128*5,128*5]
+        
+        
+        #v_3d = v_3d.unsqueeze(1).unsqueeze(-1)
+        
 
-        attn_v = torch.matmul(attn_weights, v)  # (bsz, n_heads, rigid_len, head_dim)
-        attn_frame = torch.matmul(attn_weights, frame_v3d)
-        attn_pari = torch.matmul(attn_weights, seq_correlation_matrix)
+        v3d_map = torch.einsum('bijmn,bjn->bijn', orientation, v_3d)  # [batch,128*5,128*5,3]
+        v3d_direction = torch.cross(altered_direction, v3d_map,dim=-1)  # [batch,128*5,128*5,3]
         
-        attn_v = attn_v.transpose(1, 2).contiguous().view(bsz, -1, self.d_model)  # (bsz, rigid_len, d_model)
-        attn_pari = attn_pari.transpose(1, 2).contiguous().view(bsz, -1, self.d_model)  # (bsz, rigid_len, d_model)
-        attn_frame = attn_frame.transpose(1, 2).contiguous().view(bsz, -1, 3)  # (bsz, rigid_len, d_model)
+       
+        attn_frame = torch.mul(attn_weights_merged.unsqueeze(-1), v3d_direction)  # [batch,128*5,128*5,3] = [batch,128*5,128*5,1] dot [batch,128*5,128*5,3]
+        attn_frame = torch.mean(attn_frame,dim=-2)   # [batch,128*5,128*5,3] -> [batch,128*5,3]
+         
+       # attn_pari = torch.matmul(attn_weights_merged, seq_correlation_matrix)   
+       # attn_pari = attn_pari.transpose(1, 2).contiguous().view(bsz, -1, self.d_model)  # (bsz, rigid_len, d_model)   
+       # attn_frame = attn_frame.transpose(1, 2).contiguous().view(bsz, -1, 3)  # (bsz, rigid_len, d_model)
         
-        attn_output = torch.cat((attn_v, attn_pari, attn_frame), dim=-1)
+        attn_output = torch.cat((attn_v, attn_frame), dim=-1) 
         
-        attn_output = self.fc(attn_output)
+        attn_output = self.fc(attn_output) # [batch,128*5,384+3]->[batch,128*5,3]
 
         return attn_output
 
@@ -211,7 +189,7 @@ class FeedForward(nn.Module):
         return x
 
 class EncoderLayer(nn.Module):
-    def __init__(self, d_model, n_heads, d_ff, dropout=0.1):
+    def __init__(self, d_model, n_heads, d_ff, dropout = 0.1):
         super(EncoderLayer, self).__init__()
         self.self_attn = Rigid_MultiHeadAttention(d_model, n_heads)
         self.ff = FeedForward(d_model, d_ff)
@@ -219,13 +197,13 @@ class EncoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
-
-    def forward(self, x_rigid, sidechain_frame, seq_correlation_matrix, attention_mask=None):
+   
+    def forward(self, x_rigid, altered_direction,  orientation, rigid_mask, frame_pair_mask=None, seq_correlation_matrix=None, distance =None):
         # Self-attention
         residual = x_rigid
         x_rigid = self.norm1(x_rigid)
         
-        x_rigid = self.self_attn(x_rigid, sidechain_frame, seq_correlation_matrix, attention_mask)
+        x_rigid = self.self_attn(x_rigid, altered_direction, orientation, rigid_mask)
         x_rigid = residual +self.dropout1(x_rigid)
 
         # Feed forward
@@ -249,7 +227,7 @@ class AnglesPredictor(nn.Module):
         self.d_model = d_model
         self.d_out = d_out
         self.dense1 = nn.Linear(d_model, d_model)
-
+        #拉平了去做，后面可以是5个一组
         if isinstance(activation, str):
             self.dense1_act = get_activation(activation)
         else:
@@ -266,22 +244,42 @@ class AnglesPredictor(nn.Module):
         return x
 
 
+# 填坑：
+# 1. seq_pair信息没放到attetion中作为最终输出的一部分；
+# 2. distance未作为尺度加到attenion权重；初步设想，是引入某个投影函数，对distance做数值变化，让其作为attention的约束。rigid的距离太远or太近都不应该发挥太大作用。【类似neighbor思想？】
+# 3. bias未加入attention权重计算；
+# 4. frame的attention并没有使用多头，而是合并了权重，记得加入多头机制；
+# 5. 位置编码需要重新更改；
+# 6. 预测角度，MLP的输入是[batch,l,r*5,d] 是否改为[batch,l,r,5,d]
+# [batch,seq_len,rigid,d] 
 
 class Ridge_Transformer(nn.Module):
     def __init__(self,
-        d_model: int = 512,
+        d_model: int = 384,
         d_esm_seq: int = 1024,
-        n_rigid_type: int = 4,
-        n_rigid_property: int = 19,
-        n_layers: int = 4,
+        n_rigid_type: int = 5,
+        n_rigid_property: int = 20,
+        n_layers: int = 5,
         n_heads: int = 8,
         d_ff: int = 1024, #hidden layer dim
-        d_angles:int =4,
-        max_seq_len: int =5000,
+        d_angles:int = 4,
+        max_seq_len: int = 5000,
         dropout: float = 0.1,
-    ):
+    ):  
+        print("===========================ridig transformer paramters===========================")
+        print("===============d_model===============", d_model)
+        print("===============d_esm_seq===============", d_esm_seq)
+        print("===============n_rigid_type===============", n_rigid_type)
+        print("===============n_rigid_property===============", n_rigid_property)   
+        print("===============n_layers===============", n_layers)
+        print("===============n_heads===============", n_heads)
+        print("===============d_ff===============", d_ff)
+        print("===============d_angles===============", d_angles)
+        print("===============max_seq_len===============", max_seq_len)
+        print("===============dropout===============", dropout)
+        print("===========================ridig transformer paramters===========================")
         super(Ridge_Transformer, self).__init__()
-        self.embedding = Ridig_Embeddings(d_model, d_esm_seq, n_rigid_type, n_rigid_property)
+        self.embedding = Ridig_Embeddings(d_model, d_esm_seq, n_rigid_type, n_rigid_property) 
         self.pos_encoding = SinusoidalPositionalEncoding(d_model, dropout, max_seq_len)
         self.linear = nn.Linear(d_esm_seq, d_model)
         self.layers = nn.ModuleList([EncoderLayer(d_model, n_heads, d_ff) for _ in range(n_layers)])
@@ -289,125 +287,38 @@ class Ridge_Transformer(nn.Module):
         self.norm = nn.LayerNorm(d_model)
 
     def forward(self,
-        angels: torch.Tensor, #[batch,128,4]
+        side_chain_angles: torch.Tensor, #[batch,128,4]
         backbone_coords: torch.Tensor, #[batch,128,4,3]
+        aatype_idx: torch.Tensor,#[batch,128,4,3]
         time: torch.Tensor, 
-        attention_mask: torch.Tensor,
+        rigid_mask: torch.Tensor,
         x_seq_esm: torch.Tensor,  #[batch,128,1024]
-        x_rigid_type: torch.Tensor, #[batch,128,4,4] x_rigid_type[-1]=one hot
-        x_rigid_proterty: torch.Tensor, #[batch,128,4,19]
+        x_rigid_type: torch.Tensor, #[batch,128,5,19] x_rigid_type[-1]=one hot
+        x_rigid_proterty: torch.Tensor, #[batch,128,5,6]
     ):
-        x_rigid = self.embedding(x_seq_esm, x_rigid_type, x_rigid_proterty) # [batch,128,4,512]
-        x_rigid = x_rigid.view(x_rigid.size(0), -1, x_rigid.size(-1)) # [batch,128*4,512]
-        x_rigid = self.pos_encoding(x_rigid) #rigid finish # [batch,128*4,512]
+        x_rigid = self.embedding(x_seq_esm, x_rigid_type, x_rigid_proterty) # [batch,128,5,384]
+        x_rigid = x_rigid.view(x_rigid.size(0), -1, x_rigid.size(-1)) # [batch,128*5,384]
+        x_rigid = self.pos_encoding(x_rigid) #rigid finish # [batch,128*5,384]
         
 
         #calculate correlation matrix based on 
-        x_seq_esm = self.linear(x_seq_esm)  # [batch,128,512]
-        seq_correlation_matrix= calculate_correlation_matrix(x_seq_esm) #  [batch,128,128,?]
+        x_seq_esm = self.linear(x_seq_esm)  # [batch,128,384]
         
+        #==============================================================================#
+        #seq_correlation_matrix= calculate_correlation_matrix(x_seq_esm) #  引入pair信息，填坑
+        #==============================================================================#
+        
+        # frame_pair_mask, [batch,128*5,128*5]
+        # distance, [batch,128*5,128*5]
+        # altered_direction, [batch,128*5,128*5,3]
+        # orientation [batch,128*5,128*5,3,3]
         for layer in self.layers:
-            sidechain_frame = cal_sidechain_frame(angels, backbone_coords) # [batch,128,4,3,?] 
-            #r = sidechain_frame[0] r_ba = sidechain_frame[1]
-            # O = sidechain_frame[2]
-            x_rigid = layer(x_rigid, sidechain_frame, seq_correlation_matrix, attention_mask) # [batch,128, 4,512]
+            rigid_by_residue = structure_build.torsion_to_frame(aatype_idx, backbone_coords, side_chain_angles) # add attention
+            frame_pair_mask, distance, altered_direction, orientation = structure_build.frame_to_edge(rigid_by_residue, aatype_idx)
+            x_rigid = layer(x_rigid, altered_direction,  orientation, rigid_mask) # [batch,128, 5, 384]
             x_rigid = self.norm(x_rigid)
             x_rigid = x_rigid+time
-            angels = self.predict_angles(x_rigid) #[batch,128,4]
+            side_chain_angles = self.predict_angles(x_rigid) #[batch,128,4]
         
-        return angels
+        return side_chain_angles
 
-
-
-
-
-
-
-
-
-'''         
-def rigid_attention(
-    query: torch.Tensor, #[batch, h, L*4, 512]
-    key: torch.Tensor, #[batch, h, L*4, 512]
-    value: torch.Tensor, #[batch, h, L*4, 512]
-    value_3d: torch.Tensor, #[batch, h, L*4, 3]
-    seq_pair: torch.Tensor, # [batch, h, L, 1028] # pair?
-    frame: torch.Tensor, #[batch,h,L*4,?]
-    mask = None, 
-    dropout=None,
-) -> torch.Tensor:
-    d_k = query.size(-1)
-   # scores = (torch.matmul(query, key.transpose(-2, -1))+seq_pair)/ math.sqrt(d_k) ##[batch, h, L*4, L*4]
-    scores = (torch.matmul(query, key.transpose(-2, -1))+seq_pair)/ math.sqrt(d_k) ##[batch, h, L*4, L*4]
-
-    if mask is not None:
-       scores = scores.masked_fill(mask == 0, -1e9) 
-    
-    p_attn = F.softmax(scores, dim = -1)
-    
-    if  dropout is not None:
-        p_attn = dropout(p_attn) 
-    
-    O_v = torch.matmul(p_attn,value) #error
-    O_3d = torch.matmul(p_attn,frame) #error
-    O_seq = torch.matmul(p_attn, seq_pair) #error
-    
-    return torch.cat([O_v, O_3d,  O_seq], dim=-1)#error
-''' 
-'''
-class MultiHeadedAttention(nn.Module): 
-    def __init__(self, h, d_model, dropout=0.1):
-        super(MultiHeadedAttention, self).__init__() 
-        #assert d_model % h == 0
-        self.d_k = d_model // h
-        self.h = h
-        self.linears = clones(nn.Linear(d_model, d_model),4)
-        self.value_3d = nn.Linear(d_model, 3)
-        #self.attn = None
-        self.dropout = nn.Dropout(dropout)
-    def forward(self, query, key, value, mask=None):
-        if mask is not None:
-            mask = mask.unsqueeze(1)          
-        nbatches = query.size(0)
-        query, key, value = [l(x).view(nbatches, -1, self.h, self.d_k)
-                             .transpose(1, 2) for l, x in zip(self.linears, (query, key, value))] 
-         
-        x = rigid_attention(query, key, value, mask=mask, dropout=self.dropout)
-        x = x.transpose(1, 2).contiguous().view(nbatches, -1, self.h * self.d_k)
-        
-        return self.linears[-1](x)
-
-class EncoderLayer(nn.Module):
-    def __init__(self, n_heads, d_model, d_ff, dropout=0.1):
-        super(EncoderLayer, self).__init__()
-        self.multihead_attention = MultiHeadedAttention(n_heads, d_model, dropout)
-        self.feed_forward = nn.Sequential(
-            nn.Linear(d_model, d_ff),
-            nn.ReLU(),
-            nn.Linear(d_ff, d_model),
-            nn.Dropout(dropout),
-        )
-        self.layer_norm1 = nn.LayerNorm(d_model)
-        self.layer_norm2 = nn.LayerNorm(d_model)
-        
-    def forward(self, x, mask=None):
-        attn_output = self.multihead_attention(x, x, x, mask=mask)
-        attn_output = self.layer_norm1(x + attn_output)
-        ffn_output = self.feed_forward(attn_output)
-        ffn_output = self.layer_norm2(attn_output + ffn_output)
-        return ffn_output 
-         
-class Encoder(nn.Module):
-    def __init__(self, n_layers, n_heads, d_model, d_ff, dropout=0.1):
-        super().__init__()
-
-        self.layers = nn.ModuleList([
-            EncoderLayer(n_heads, d_model, d_ff, dropout)
-            for _ in range(n_layers)
-        ])       
-    def forward(self, x, mask=None):
-        for layer in self.layers:
-            x = layer(x, mask=mask)
-        return x
-       
-'''
