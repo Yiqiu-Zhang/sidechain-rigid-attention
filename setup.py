@@ -4,8 +4,8 @@ with open("README.md", "r") as source:
     long_description = source.read()
 
 setup(
-    name="foldingdiff",
-    author="Kevin Wu",
+    name="sidechain-rigid-attention",
+    author="Ying Lv",
     packages=find_packages(),
     include_package_data=True,
     description="Diffusion for protein backbone generation using internal angles",

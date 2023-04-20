@@ -30,7 +30,7 @@ from foldingdiff.datasets import AnglesEmptyDataset, NoisedAnglesDataset
 from foldingdiff.angles_and_coords import create_new_chain_nerf
 from foldingdiff import utils
 
-sys.path.append(r"/mnt/petrelfs/lvying/code/sidechain-diffusion/write_preds_pdb")
+sys.path.append(r"/mnt/petrelfs/lvying/code/sidechain-rigid-attention/write_preds_pdb")
 from structure_build import write_preds_pdb_file
 
 # :)
@@ -343,7 +343,7 @@ def main() -> None:
     # Load the model
     model_snapshot_dir = outdir / "model_snapshot"
     print('==========================lvying===================',args.model)
-    model = modelling.BertForDiffusionBase.from_dir(
+    model = modelling.AngleDiffusionBase.from_dir(
         args.model, copy_to=model_snapshot_dir
     ).to(torch.device(args.device))
 

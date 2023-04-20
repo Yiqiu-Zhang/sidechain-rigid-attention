@@ -3,17 +3,12 @@
     "timesteps": 1000,
     "max_seq_len": 128,
     "min_seq_len": 40,
-    "trim_strategy": "randomcrop",
+    "trim_strategy": "leftalign",
     "variance_schedule": "cosine",
     "variance_scale": 1.0,
     "time_encoding": "gaussian_fourier",
     "position_embedding_type": "relative_key",
-    "num_hidden_layers": 12,
-    "hidden_size": 384,
-    "intermediate_size": 768,
-    "num_heads": 12,
     "dropout_p": 0.1,
-    "decoder": "mlp",
     "gradient_clip": 1.0,
     "lr": 5e-4,
     "loss": "smooth_l1",
@@ -26,6 +21,5 @@
     "early_stop_patience": 0,
     "use_swa": false,
     "batch_size": 128,
-    "multithread": true,
-    "num_encoder_layers": 6
+    "multithread": true
 }

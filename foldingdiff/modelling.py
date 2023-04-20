@@ -217,18 +217,9 @@ class AnglesPredictor(nn.Module):
         return x
 
 
-class BertForDiffusionBase(nn.Module):
+class AngleDiffusionBase(nn.Module):
     """
-    BERT designed to be used with continuous inputs instead of tokens
-
-    Reference: https://github.com/huggingface/transformers/blob/f681437203baa7671de3174b0fa583c349d9d5e1/src/transformers/models/bert/modeling_bert.py#L870
-
-    Decoder: linear = single linear decoding of per-position embeddings
-             mlp = two-layer MLP to decode per-position embeddings
-
-    This is the base model object and does _not_ include the pytorch lightning code
-
-    YingLv： inheritance Clas Structure
+    Our Model
     """
 
     # Define loss functions and their wrapped angular versions
@@ -254,9 +245,9 @@ class BertForDiffusionBase(nn.Module):
         ft_names: Optional[List[str]] = None,
         time_encoding: TIME_ENCODING = "gaussian_fourier",
         d_model: int = 384,
-        d_esm_seq: int = 1024,
-        n_rigid_type: int = 5,
-        n_rigid_property: int = 20,
+        d_esm_seq: int = 320,
+        n_rigid_type: int = 20,
+        n_rigid_property: int = 6,
         n_layers: int = 4,
         n_heads: int = 8,
         d_ff: int = 1024, #hidden layer dim
@@ -267,15 +258,8 @@ class BertForDiffusionBase(nn.Module):
         """
         dim should be the dimension of the inputs
         """
-        #start===================yinglv====================================
-        super().__init__()
-        #BertPreTrainedModel.__init__(self, config)
-        #Struct2Seq.__init__(self)
-        #end===================yinglv====================================
-        
+        super().__init__()  
         self.config = config
-        if self.config.is_decoder:
-            raise NotImplementedError
         self.ft_is_angular = ft_is_angular
         n_inputs = len(ft_is_angular)
         self.n_inputs = n_inputs
@@ -286,20 +270,6 @@ class BertForDiffusionBase(nn.Module):
         assert (
             len(self.ft_names) == n_inputs
         ), f"Got {len(self.ft_names)} names, expected {n_inputs}"
-
-        # Needed to project the low dimensional input to hidden dim
-        
-       # self.inputs_to_hidden_dim = nn.Linear(
-       #     in_features=n_inputs, out_features=config.hidden_size
-       # )
-
-       # self.seq_to_hidden_dim = nn.Linear(in_features=320, out_features=config.hidden_size)
-       # temp_dim = 320+config.hidden_size
-       # self.to_hidden_dim = nn.Linear(in_features=temp_dim, out_features=config.hidden_size)
-        
-       # self.embeddings = BertEmbeddings(config)
-   
-        #start===================yinglv====================================
 
         self.encoder = Ridge_Transformer(
             d_model,
@@ -313,29 +283,16 @@ class BertForDiffusionBase(nn.Module):
             max_seq_len,
             dropout,
         )
-
-        #end===================yinglv====================================
-
- # Set up the network to project token representation to our four outputs
-      #  if decoder == "linear":
-     #       self.token_decoder = nn.Linear(config.hidden_size, n_inputs)
-     #   elif decoder == "mlp":
-     #       self.token_decoder = AnglesPredictor(config.hidden_size, n_inputs)
-     #   else:
-     #       raise ValueError(f"Unrecognized decoder: {decoder}")
-
+        
         # Set up the time embedder
         if time_encoding == "gaussian_fourier":
-            self.time_embed = GaussianFourierProjection(config.hidden_size)
+            self.time_embed = GaussianFourierProjection(d_model)
         elif time_encoding == "sinusoidal":
-            self.time_embed = SinusoidalPositionEmbeddings(config.hidden_size)
+            self.time_embed = SinusoidalPositionEmbeddings(d_model)
         else:
             raise ValueError(f"Unknown time encoding: {time_encoding}")
         pl.utilities.rank_zero_info(f"Using time embedding: {self.time_embed}")
-
-        # Initialize weights and apply final processing
-        #self.init_weights()
-
+        
         # Epoch counters and timers
         self.train_epoch_counter = 0
         self.train_epoch_last_time = time.time()
@@ -349,7 +306,6 @@ class BertForDiffusionBase(nn.Module):
         idx: int = -1,
         best_by: Literal["train", "valid"] = "valid",
         copy_to: str = "",
-        num_encoder_layers: int = 6,
         **kwargs,
     ):
         """
@@ -376,15 +332,22 @@ class BertForDiffusionBase(nn.Module):
             config=config,
             ft_is_angular=ft_is_angular,
             time_encoding=train_args[time_encoding_key],
-            decoder=train_args["decoder"],
-
+            d_model = 384,
+            d_esm_seq = 320,
+            n_rigid_type= 20,
+            n_rigid_property = 6,
+            n_layers = 4,
+            n_heads = 8,
+            d_ff = 1024, #hidden layer dim
+            d_angles = 4,
+            max_seq_len = 5000,
+           # dropout = 0.1
             # lr=train_args["lr"],
             # loss=train_args["loss"],
             # l2=train_args["l2_norm"],
             # l1=train_args["l1_norm"],
             # circle_reg=train_args["circle_reg"],
             # lr_scheduler=train_args["lr_scheduler"],
-            num_encoder_layers = num_encoder_layers,
             **kwargs,
         )
         print('==============================model_args', model_args)
@@ -432,14 +395,13 @@ class BertForDiffusionBase(nn.Module):
 
     def forward(
         self,
-       # inputs: torch.Tensor,
         side_chain_angles: torch.Tensor, #[batch,128,4]
         backbone_coords: torch.Tensor, #[batch,128,4,3]
-        aatype_idx: torch.Tensor,#[batch,128,4,3]
-        time: torch.Tensor, 
+        seq_idx: torch.Tensor,#[batch,128,4]
+        timestep: torch.Tensor, 
         rigid_mask: torch.Tensor,
         x_seq_esm: torch.Tensor,  #[batch,128,1024]
-        x_rigid_type: torch.Tensor, #[batch,128,5,19] x_rigid_type[-1]=one hot
+        x_rigid_type: torch.Tensor, #[batch,128,5,20] x_rigid_type[-1]=one hot
         x_rigid_proterty: torch.Tensor, #[batch,128,5,6]
         position_ids: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
@@ -447,91 +409,29 @@ class BertForDiffusionBase(nn.Module):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ):
-        r"""
-        encoder_hidden_states  (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`, *optional*):
-            Sequence of hidden-states at the output of the last layer of the encoder. Used in the cross-attention if
-            the model is configured as a decoder.
-        encoder_attention_mask (`torch.FloatTensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Mask to avoid performing attention on the padding token indices of the encoder input. This mask is used in
-            the cross-attention if the model is configured as a decoder. Mask values selected in `[0, 1]`:
-            - 1 for tokens that are **not masked**,
-            - 0 for tokens that are **masked**.
-        past_key_values (`tuple(tuple(torch.FloatTensor))` of length `config.n_layers` with each tuple having 4 tensors of shape `(batch_size, num_heads, sequence_length - 1, embed_size_per_head)`):
-            Contains precomputed key and value hidden states of the attention blocks. Can be used to speed up decoding.
-            If `past_key_values` are used, the user can optionally input only the last `decoder_input_ids` (those that
-            don't have their past key value states given to this model) of shape `(batch_size, 1)` instead of all
-            `decoder_input_ids` of shape `(batch_size, sequence_length)`.
-        use_cache (`bool`, *optional*):
-            If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
-            `past_key_values`).
-        """
-        
-        
-        output_attentions = (
-            output_attentions
-            if output_attentions is not None
-            else self.config.output_attentions
-        )
-        output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
-        )
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
-         
-        input_shape = inputs.size()
+        input_shape = side_chain_angles.size()
         batch_size, seq_length, *_ = input_shape
         logging.debug(f"Detected batch {batch_size} and seq length {seq_length}")
 
-        assert attention_mask is not None
-
-        # If position IDs are not given, auto-generate them
-        if position_ids is None:
-            # [1, seq_length]
-            position_ids = (
-                torch.arange(
-                    seq_length,
-                )
-                .expand(batch_size, -1)
-                .type_as(timestep)
-            )
-        
-        # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
-        # ourselves in which case we just need to make it broadcastable to all heads. This code is taken
-        # from hugggingface modeling_utils
-        assert (
-            attention_mask.dim() == 2
-        ), f"Attention mask expected in shape (batch_size, seq_length), got {attention_mask.shape}"
-       # extended_attention_mask = attention_mask[:, None, None, :]
-       # extended_attention_mask = extended_attention_mask.type_as(attention_mask)
-       # extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
-        
-        extended_attention_mask1 = attention_mask[:, None, None, :]
-        extended_attention_mask2 = extended_attention_mask1.type_as(attention_mask)
+        extended_attention_mask1 = rigid_mask[:, None, None, :]
+        extended_attention_mask2 = extended_attention_mask1.type_as(rigid_mask)
         extended_attention_mask = (1.0 - extended_attention_mask2) * -10000.0
         
-
-
-        assert len(inputs.shape) == 3  # batch_size, seq_length, features
+        assert len(side_chain_angles.shape) == 3  # batch_size, seq_length, features
 
         time_encoded = self.time_embed(timestep.squeeze(dim=-1)).unsqueeze(1)
-        
         output = self.encoder(side_chain_angles,
                               backbone_coords,
-                              aatype_idx,
-                              time,
-                              rigid_mask,
+                              seq_idx,
+                              time_encoded,
+                              extended_attention_mask,
                               x_seq_esm,
                               x_rigid_type, 
                               x_rigid_proterty
         ) 
-
         return output
 
-
-class BertForDiffusion(BertForDiffusionBase, pl.LightningModule):
+class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
     """
     Wraps our model as a pl LightningModule for easy training
     """
@@ -552,7 +452,7 @@ class BertForDiffusion(BertForDiffusionBase, pl.LightningModule):
         
     ):
         """Feed args to BertForDiffusionBase and then feed the rest into"""
-        BertForDiffusionBase.__init__(self, **kwargs)
+        AngleDiffusionBase.__init__(self, **kwargs)
         # Store information about leraning rates and loss
         self.learning_rate = lr
         # loss function is either a callable or a list of callables
@@ -591,7 +491,7 @@ class BertForDiffusion(BertForDiffusionBase, pl.LightningModule):
         self.epochs = epochs
         self.steps_per_epoch = steps_per_epoch
         self.lr_scheduler = lr_scheduler
-
+        
         # Set up the output directory for writing predictions
         self.write_preds_to_dir = write_preds_to_dir
         self.write_preds_counter = 0
@@ -606,27 +506,20 @@ class BertForDiffusion(BertForDiffusionBase, pl.LightningModule):
         is equivalent to the number of features we are fitting to.
         """
         known_noise = batch["known_noise"]
-        
-       
-        #print('***************************',torch.any(torch.isnan(batch["corrupted"])))
-       # if(torch.any(torch.isnan(batch["corrupted"]))):
-       
-            #print('==========================================',batch["corrupted"])
-            #print('tttttttttttttttttttttttttttttttttttttttttt',batch["t"])
-       # print("============================",batch["corrupted"])
-       # print("============================",batch["seq"])
-        
+            
         predicted_noise = self.forward(
-            batch["corrupted"],
-            batch["coords"],
-            batch["acid_embedding"],
-            batch["t"],
-            attention_mask=batch["attn_mask"],
-            position_ids=batch["position_ids"],
+            batch["corrupted"],  #[batch,128,4]
+            batch["coords"], #[batch,128,4,3]
+            batch["seq"], #[batch,128,4]
+            batch["t"], 
+            batch["chi_mask"],
+            batch["acid_embedding"],  #[batch,128,1024]
+            batch['rigid_type_onehot'], #[batch,128,5,19] x_rigid_type[-1]=one hot
+            batch['rigid_property'], #[batch,128,5,6]
         )
         predicted_noise = torch.mul(predicted_noise, batch['chi_mask'])
         known_noise = torch.mul(known_noise, batch['chi_mask'])
-       # print('predicted noise=', predicted_noise.shape)
+    
         assert (
             known_noise.shape == predicted_noise.shape
         ), f"{known_noise.shape} != {predicted_noise.shape}"
@@ -636,6 +529,7 @@ class BertForDiffusion(BertForDiffusionBase, pl.LightningModule):
         # two lists of values, one for each dimension
         # known_noise has shape (batch, seq_len, num_fts)
         unmask_idx = torch.where(batch["attn_mask"])
+        
         assert len(unmask_idx) == 2
         loss_terms = []
         for i in range(known_noise.shape[-1]):
@@ -745,25 +639,8 @@ class BertForDiffusion(BertForDiffusionBase, pl.LightningModule):
         """
         Training step, runs once per batch
         """
-             
-
         loss_terms = self._get_loss_terms(batch)
-        
-        
         avg_loss = torch.mean(loss_terms)
-
-    
-
-        #print([x.grad for x in self.optimizer.param_groups[0]['params']])
-       # for name, parms in self.named_parameters():
-
-        #    print('--->name',name)
-        #    print('--->para', parms)
-        #    print('--->grad_require', parms.requires_grad)
-        #    print('--->grad_value', parms.grad)
-
-
-
         # L1 loss implementation
         if self.l1_lambda > 0:
             l1_penalty = sum(torch.linalg.norm(p, 1) for p in self.parameters())
@@ -789,24 +666,14 @@ class BertForDiffusion(BertForDiffusionBase, pl.LightningModule):
         """Log the average training loss over the epoch"""
         losses = torch.stack([o["loss"] for o in outputs])
         mean_loss = torch.mean(losses)
-        
-      #  for name, parms in self.named_parameters():
-      #      print('--->name',name)
-       #     print('--->para', parms)
-       #     print('--->grad_require', parms.requires_grad)
-       #     print('--->grad_value', parms.grad)
-
         t_delta = time.time() - self.train_epoch_last_time
         pl.utilities.rank_zero_info(
             f"Train loss at epoch {self.train_epoch_counter} end: {mean_loss:.4f} ({t_delta:.2f} seconds)"
         )
         # Increment counter and timers
+        #print("============hparams==============", self.hparams)
         self.train_epoch_counter += 1
         self.train_epoch_last_time = time.time()
-       # snapshot = tracemalloc.take_snapshot()
-       # top_stats = snapshot.statistics('lineno')
-       # for stat in top_stats[:15]:
-       #     print(stat)
 
     def validation_step(self, batch, batch_idx) -> Dict[str, torch.Tensor]:
         """
@@ -895,7 +762,7 @@ class BertForDiffusion(BertForDiffusionBase, pl.LightningModule):
         return retval
 
 
-class BertForAutoregressiveBase(BertForDiffusionBase):
+class BertForAutoregressiveBase(AngleDiffusionBase):
     """
     Overrides the previous model's forward function to not handle noise or timesteps
     """
@@ -1001,7 +868,7 @@ class BertForAutoregressive(BertForAutoregressiveBase, pl.LightningModule):
         steps_per_epoch: int = 250,  # Dummy value
         **kwargs,
     ):
-        BertForDiffusionBase.__init__(self, **kwargs)
+        AngleDiffusionBase.__init__(self, **kwargs)
         self.learning_rate = lr
         self.lr_scheduler = lr_scheduler
         self.l2_lambda = l2

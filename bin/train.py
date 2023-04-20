@@ -2,9 +2,11 @@
 Training script.
 
 Example usage: python ~/protdiff/bin/train.py ~/protdiff/config_jsons/full_run_canonical_angles_only_zero_centered_1000_timesteps_reduced_len.json
+srun -p bio_s1 -n 1 --ntasks-per-node=1 --cpus-per-task=40 --gres=gpu:2 python train.py /mnt/petrelfs/lvying/code/sidechain-rigid-attention/config_jsons/cath_full_angles_cosine.json --dryrun
+squeue -p bio_s1
+sbatch -p bio_s1 --ntasks-per-node=1 --cpus-per-task=40 --gres=gpu:2  lvying-sidechain-job.sh
 """
-# squeue -p bio_s1
-# sbatch -p bio_s1 --ntasks-per-node=1 --cpus-per-task=40 --gres=gpu:8  lvying-sidechain-job.sh
+
 import os, sys
 import shutil
 import json
@@ -38,11 +40,11 @@ from foldingdiff import utils
 from foldingdiff import custom_metrics as cm
 from torchsummary import summary
 
-#srun -p bio_s1 -n 1 --ntasks-per-node=1 --cpus-per-task=20 --gres=gpu:1 python train.py /mnt/petrelfs/lvying/code/sidechain-rigid-attention/config_jsons/cath_full_angles_cosine.json --dryrun  -o result_test                        
+#                        
 
 from pytorch_lightning.loggers import TensorBoardLogger
 
-assert torch.cuda.is_available(), "Requires CUDA to train"
+#assert torch.cuda.is_available(), "Requires CUDA to train"
 # reproducibility
 torch.manual_seed(6489)
 # torch.use_deterministic_algorithms(True)
@@ -299,7 +301,7 @@ def train(
     # Controls data loading and noising process
     dataset_key: str = "cath",  # cath, alhpafold, or a directory containing pdb files
     angles_definitions: ANGLES_DEFINITIONS = "canonical-full-angles",
-    max_seq_len: int = 512,
+    max_seq_len: int = 128,
     min_seq_len: int = 0,  # 0 means no filtering based on min sequence length
     trim_strategy: datasets.TRIM_STRATEGIES = "leftalign",
     timesteps: int = 250,
@@ -315,7 +317,7 @@ def train(
         "absolute", "relative_key", "relative_key_query"
     ] = "absolute",  # relative_key = https://arxiv.org/pdf/1803.02155.pdf | relative_key_query = https://arxiv.org/pdf/2009.13658.pdf
     dropout_p: float = 0.1,  # Default 0.1, can disable for debugging
-    decoder: modelling.DECODER_HEAD = "mlp",
+   # decoder: modelling.DECODER_HEAD = "mlp",
     # Related to training strategy
     gradient_clip: float = 1.0,  # From BERT trainer
     batch_size: int = 16,
@@ -343,7 +345,7 @@ def train(
     ngpu: int = -1,  # -1 for all GPUs
     write_valid_preds: bool = False,  # Write validation predictions to disk at each epoch
     dryrun: bool = False,  # Disable some frills for a fast run to just train
-    num_encoder_layers: int = 1,
+  #  num_encoder_layers: int = 1,
 ):
     """Main training loop"""
     # Record the args given to the function before we create more vars
@@ -445,10 +447,10 @@ def train(
     )
     # ft_is_angular from the clean datasets angularity definition
     ft_key = "coords" if angles_definitions == "cart-coords" else "angles"
-    model = modelling.BertForDiffusion(
+    model = modelling.AngleDiffusion(
         config=cfg,
         time_encoding=time_encoding,
-        decoder=decoder,
+        #decoder=decoder,
         ft_is_angular=dsets[0].dset.feature_is_angular[ft_key],
         ft_names=dsets[0].dset.feature_names[ft_key],
         lr=lr,
@@ -462,7 +464,7 @@ def train(
         epochs=max_epochs,
         steps_per_epoch=len(train_dataloader),
         lr_scheduler=lr_scheduler,
-        num_encoder_layers=num_encoder_layers,
+       # num_encoder_layers=num_encoder_layers,
         write_preds_to_dir=results_folder / "valid_preds"
         if write_valid_preds
         else None,
@@ -484,11 +486,11 @@ def train(
 
     logging.info(f"Using {accelerator} with strategy {strategy}")
     # start=================================lvying================================
-    #print("model=",model)
+    print("model=",model)
     model_size = pl.utilities.memory.get_model_size_mb(model)
     print("model_size = {} M \n".format(model_size))
     # end=================================lvying================================
-    print("=================================LvYing Train Start================================")
+  #  print("=================================LvYing Train Start================================")
     trainer = pl.Trainer(
         default_root_dir=results_folder,
         gradient_clip_val=gradient_clip,
@@ -500,16 +502,28 @@ def train(
         log_every_n_steps=min(1, len(train_dataloader)),  # Log >= once per epoch
         accelerator=accelerator,
         strategy=strategy,
-        gpus=1,
+        gpus=5,
         enable_progress_bar=False,
         move_metrics_to_cpu=False,  # Saves memory
     )
+   # print("=================================LvYing testing================================")
+    print("++++++++++++++++++++++++++++++++++++model framework++++++++++++++++++++++++++++++++++++++")
+    temp_idx = 0
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+           continue
+        if param.grad is None:
+           print(temp_idx,name)
+           temp_idx = temp_idx+1
+    print("++++++++++++++++++++++++++++++++++++model framework++++++++++++++++++++++++++++++++++++++")
+  #  print(train_dataloader)
+  #  print(valid_dataloader)
     trainer.fit(
         model=model,
         train_dataloaders=train_dataloader,
         val_dataloaders=valid_dataloader,
     )
-    print("=================================LvYing Train Finish================================")
+    #print("=================================LvYing Train Finish================================")
     #Plot the losses
     #metrics_csv = os.path.join(
      #   trainer.logger.save_dir, "lightning_logs/version_0/metrics.csv"

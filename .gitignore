@@ -1,5 +1,6 @@
 *.log
 bin/results/
+bin/resutl_4_20/
 bin/results1/
 bin/results2/
 bin/results3/

@@ -25,7 +25,7 @@ class Rotation:
 
         if self._rot_mats is not None:
             rot_mats = self._rot_mats[index + (slice(None), slice(None))]
-            print("rot_mats in =====",rot_mats.shape)
+           # print("rot_mats in =====",rot_mats.shape)
             return Rotation(rot_mats=rot_mats)
         else:
             raise ValueError("rotation are None")
@@ -248,7 +248,7 @@ def Rigid_mult(rigid_1: Rigid,
     rot2 = rigid_2.rot.get_rot_mat()
 
     new_rot = rot_matmul(rot1, rot2)
-    new_trans = rot_vec(rot1, rigid_2.trans)
+    new_trans = rot_vec(rot1, rigid_2.trans)  + rigid_1.trans
 
     return  Rigid(Rotation(new_rot), new_trans)
 
@@ -359,17 +359,17 @@ def get_gb_trans(bb_pos: torch.Tensor) -> Rigid: # [*,128,4,3]
     '''
     Get global transformation from given backbone position
     '''
-    ex = bb_pos[..., 2, :] - bb_pos[..., 1, :] # [*,128,3]
-    y_vec = bb_pos[..., 0, :] - bb_pos[..., 1, :] # [*,128,3]
-    t = bb_pos[..., 1, :] # [*,128,3]
+    ex = bb_pos[..., 2, :] - bb_pos[..., 1, :] # [*,128,3] C - CA
+    y_vec = bb_pos[..., 0, :] - bb_pos[..., 1, :] # [*,128,3] N - CA
+    t = bb_pos[..., 1, :] # [*,128,3] CA
     
-    print("ex====",ex.shape)
-    print("y_vec====",y_vec.shape)
-    print("t====",t.shape)
-    print("torch.linalg.vector_norm(ex, dim=-1)", torch.linalg.vector_norm(ex, dim=-1).shape)
+   # print("ex====",ex.shape)
+   # print("y_vec====",y_vec.shape)
+   # print("t====",t.shape)
+   # print("torch.linalg.vector_norm(ex, dim=-1)", torch.linalg.vector_norm(ex, dim=-1).shape)
     # [*, N, 3]
     ex_norm = ex / torch.linalg.vector_norm(ex, dim=-1).unsqueeze(-1)
-    print(ex_norm.shape)
+  #  print(ex_norm.shape)
     def dot(a, b):  # [*, N, 3]
         x1, y1, z1 = torch.unbind(b, dim=-1)
         x2, y2, z2 = torch.unbind(a, dim=-1)
@@ -389,5 +389,5 @@ def get_gb_trans(bb_pos: torch.Tensor) -> Rigid: # [*,128,4,3]
     m = torch.cat([m, last_dim], axis=-1)
     '''
 
-    new_rot = torch.stack([ex_norm, ey_norm, ez_norm], dim=-1)
+    new_rot = torch.nan_to_num(torch.stack([ex_norm, ey_norm, ez_norm], dim=-1))
     return Rigid(Rotation(rot_mats=new_rot), t)

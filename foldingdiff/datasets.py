@@ -504,7 +504,7 @@ class CathSideChainAnglesDataset(Dataset):
                 Literal["cath", "alphafold"], str
             ] = "cath",  # Keyword or a directory
             split: Optional[Literal["train", "test", "validation"]] = None,
-            pad: int = 512,
+            pad: int = 128,
             min_length: int = 40,  # Set to 0 to disable
             trim_strategy: TRIM_STRATEGIES = "leftalign",
             toy: int = 0,
@@ -877,16 +877,17 @@ class CathSideChainAnglesDataset(Dataset):
             )
             rigid_type_onehot = np.pad(
                 rigid_type_onehot,
-                ((0, self.pad - rigid_type_onehot.shape[0]), (0, 0)),
+                ((0, self.pad - rigid_type_onehot.shape[0]),(0, 0), (0, 0)),
                 mode="constant",
                 constant_values=0,
             )
             rigid_property = np.pad(
                 rigid_property,
-                ((0, self.pad - rigid_property.shape[0]), (0, 0)),
+                ((0, self.pad - rigid_property.shape[0]), (0, 0),(0, 0)),
                 mode="constant",
                 constant_values=0,
             )
+        elif angles.shape[0] > self.pad:
             if self.trim_strategy == "leftalign":
                 angles = angles[: self.pad]
                 coords = coords[: self.pad]
@@ -895,11 +896,20 @@ class CathSideChainAnglesDataset(Dataset):
                 seq = seq[: self.pad]
                 rigid_type_onehot = rigid_type_onehot[: self.pad]
                 rigid_property = rigid_property[: self.pad]
-       #         print("*********************acid_embedding*******************",acid_embedding.shape)
-      #          print("*********************seq*******************",seq.shape)
+                
+               # print("*********************angles*******************",angles.shape)
+               # print("*********************coords*******************",coords.shape)
+               # print("*********************acid_embedding*******************",acid_embedding.shape)
+               # print("*********************seq*******************",seq.shape)
+               # print("*********************chi_mask *******************",chi_mask .shape)
+               # print("*********************rigid_type_onehot*******************",rigid_type_onehot.shape)
+               # print("*********************rigid_property*******************",rigid_property.shape)
             elif self.trim_strategy == "randomcrop":
                 # Randomly crop the sequence to
+                print(self.pad)
                 start_idx = self.rng.integers(0, angles.shape[0] - self.pad)
+                print(start_idx)
+                print(angles.shape[0] - self.pad)
                 end_idx = start_idx + self.pad
                 assert end_idx < angles.shape[0]
                 angles = angles[start_idx:end_idx]

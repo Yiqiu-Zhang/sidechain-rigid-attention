@@ -4,6 +4,8 @@ import math
 import numpy as np
 import pandas as pd
 import torch.nn.functional as F
+
+'''
 AA_TO_ID = {
     "A": 0,
     "B": 2,
@@ -30,8 +32,9 @@ AA_TO_ID = {
     "W": 18,
     "Y": 19,
     "Z": 3,
-
 }
+'''
+AA_TO_ID = {"A":0,"C":1,"D":2,"E":3,"F":4,"G":5,"H":6,"I":7,"K":8,"L":9,"M":10,"N":11,"P":12,"Q":13,"R":14,"S":15,"T":16,"V":17,"W":18,"Y":19 }
 
 ANGLES = ["X1", "X2", "X3","X4"]
 chi_angles_atoms = {
@@ -126,7 +129,17 @@ restype_name_to_rigid_idx = {
     "TYR": [1,8,13],
     "VAL": [1,7],
 }
+'''
+type 0: mask type
+rigid 1,2,3: GLY, ALA, PRO  bb rigid, special type
+rigid 4,5,6,16: polar neutral type
+rigid 7,8,9,10,11,12,13,14: Hydrophobic
+rigid 12,13,14,17: Ring
+rigid 15: Acid
+rigid 17,18,19: Alkaline
+'''
 rigid_type_property = [
+    [0,0,0,0,0,0], # Mask with no type
     [1,0,0,0,0,0],
     [1,0,0,0,0,0],
     [1,0,0,0,0,0],
@@ -212,11 +225,11 @@ def get_torsion_seq(pdb_path):
     calc_angles = {"X1": X1, "X2": X2, "X3": X3, "X4": X4}
     angle_list = pd.DataFrame({k: calc_angles[k].squeeze() for k in ANGLES})
 
-    rigid_type = torch.tensor(rigid_type)
-    rigid_type_onehot = F.one_hot(rigid_type,20)  # with the empty rigid type 0
+    rigid_type = torch.tensor(rigid_type, dtype=torch.int32)
+    rigid_type_onehot = F.one_hot(rigid_type,20)  # with the empty rigid type 0 
     rigid_type_onehot = rigid_type_onehot * torch.unsqueeze(torch.tensor(rigid_type_mask), -1)
 
-    rigid_type_onehot = np.array(rigid_type_onehot) #(L,5,20)
+   # rigid_type_onehot = np.array(rigid_type_onehot) #(L,5,20)
 
     dict_struct = {'angles': angle_list,
                    'coords': X,

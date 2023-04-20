@@ -28,6 +28,9 @@ graph_transformer/protein_features.py
 graph_transformer/self_attention.py
 graph_transformer/seq_model.py
 graph_transformer/struct2seq.py
+rigid_attention/__init__.py
+rigid_attention/build_frame.py
+rigid_attention/structure_transformer.py
 tests/__init__.py
 tests/test_data.py
 tests/test_losses.py
@@ -39,3 +42,9 @@ tests/test_tmalign.py
 tests/test_transformer.py
 tests/test_utils.py
 tests/test_variance_schedules.py
+write_preds_pdb/__init__.py
+write_preds_pdb/constant.py
+write_preds_pdb/edges.py
+write_preds_pdb/geometry.py
+write_preds_pdb/protein.py
+write_preds_pdb/structure_build.py
