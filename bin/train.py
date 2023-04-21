@@ -44,7 +44,7 @@ from torchsummary import summary
 
 from pytorch_lightning.loggers import TensorBoardLogger
 
-#assert torch.cuda.is_available(), "Requires CUDA to train"
+assert torch.cuda.is_available(), "Requires CUDA to train"
 # reproducibility
 torch.manual_seed(6489)
 # torch.use_deterministic_algorithms(True)
@@ -388,7 +388,7 @@ def train(
     pl.utilities.rank_zero_info(
         f"Given batch size: {batch_size} --> effective batch size with {torch.cuda.device_count()} GPUs: {effective_batch_size}"
     )
-
+    print("===========================",effective_batch_size)
     train_dataloader, valid_dataloader, test_dataloader = [
         DataLoader(
             dataset=ds,
@@ -489,6 +489,8 @@ def train(
     print("model=",model)
     model_size = pl.utilities.memory.get_model_size_mb(model)
     print("model_size = {} M \n".format(model_size))
+    
+
     # end=================================lvying================================
   #  print("=================================LvYing Train Start================================")
     trainer = pl.Trainer(
@@ -502,7 +504,7 @@ def train(
         log_every_n_steps=min(1, len(train_dataloader)),  # Log >= once per epoch
         accelerator=accelerator,
         strategy=strategy,
-        gpus=5,
+        gpus=2,
         enable_progress_bar=False,
         move_metrics_to_cpu=False,  # Saves memory
     )
@@ -516,8 +518,13 @@ def train(
            print(temp_idx,name)
            temp_idx = temp_idx+1
     print("++++++++++++++++++++++++++++++++++++model framework++++++++++++++++++++++++++++++++++++++")
-  #  print(train_dataloader)
-  #  print(valid_dataloader)
+    print(train_dataloader.batch_size)
+    print(valid_dataloader.batch_size)
+   # data_iter = iter(train_dataloader)
+    
+   # print(next(data_iter))
+
+    
     trainer.fit(
         model=model,
         train_dataloaders=train_dataloader,
@@ -597,7 +604,7 @@ def main():
             "subset": args.toy,
             "single_timestep_debug": args.debug_single_time,
             "cpu_only": args.cpu,
-            "ngpu": args.ngpu,
+            "ngpu": 2,
             "dryrun": args.dryrun,
         },
     )
