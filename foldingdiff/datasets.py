@@ -545,7 +545,7 @@ class CathSideChainAnglesDataset(Dataset):
             logging.info(f"Loading cached full dataset from {self.cache_fname}")
             with open(self.cache_fname, "rb") as source:
                 loaded_hash, loaded_structures = pickle.load(source)
-              #  codebase_matches_hash = loaded_hash == codebase_hash
+                #codebase_matches_hash = loaded_hash == codebase_hash
                 codebase_matches_hash = True
                 if not codebase_matches_hash:
                     logging.warning(
@@ -700,7 +700,7 @@ class CathSideChainAnglesDataset(Dataset):
         structures = list(pool.map(get_torsion_seq,fnames, chunksize=250))
         pool.close()
         pool.join()
-        structures = add_esm1b_embedding(structures,64)
+        structures = add_esm1b_embedding(structures,32)
       #  with open("/mnt/petrelfs/lvying/code/sidechain-diffusion/foldingdiff/wrong_file") as f:
       #      worng_pdb = f.readlines()
            # print(worng_pdb)       
@@ -797,6 +797,7 @@ class CathSideChainAnglesDataset(Dataset):
         chi_mask = self.structures[index]["chi_mask"]
         rigid_type_onehot = self.structures[index]["rigid_type_onehot"]
         rigid_property = self.structures[index]["rigid_property"]
+        temp_name = self.structures[index]["fname"]
        # print("&&&&&&&&&&&&&&&&&&&&&&&&angles&&&&&&&&&&&&&&&&&&",angles.shape)
        # print("&&&&&&&&&&&&&&&&&&&&&&&&coords&&&&&&&&&&&&&&&&&&",coords.shape)
        # print("&&&&&&&&&&&&&&&&&&&&&&&&seq&&&&&&&&&&&&&&&&&&",seq.shape)
@@ -830,7 +831,7 @@ class CathSideChainAnglesDataset(Dataset):
         ), f"Mismatched shapes for angles: {angles.shape[1]} != {len(CathSideChainAnglesDataset.feature_is_angular['angles'])}"
 
         # Replace nan values with zero
-        np.nan_to_num(angles, copy=False, nan=0)
+        np.nan_to_num(angles, copy=False, nan=0.)
 
         # Create attention mask. 0 indicates masked
         l = min(self.pad, angles.shape[0])
@@ -842,7 +843,17 @@ class CathSideChainAnglesDataset(Dataset):
         # attn_mask[is_nan] = 0.0  # Mask out the nan positions
 
         # Perform padding/trimming
-
+        assert angles.shape[0]==coords.shape[0]==acid_embedding.shape[0]==chi_mask.shape[0]==seq.shape[0]==rigid_type_onehot.shape[0]==rigid_property.shape[0]
+        #print("=======rigid_type_onehot==================",type(rigid_type_onehot))
+        #print("===================temp_name======================",temp_name)
+        #print("===================self.pad - rigid_type_onehot.shape[0]======================",self.pad - rigid_type_onehot.shape[0])
+        #print("===================angles.shape[0]======================",angles.shape)
+        #print("===================coords.shape[0]======================",coords.shape)
+        #print("===================acid_embedding.shape[0]======================",acid_embedding.shape)
+        #print("===================chi_mask.shape[0]======================",chi_mask.shape)
+        #print("===================seq.shape[0]======================",seq.shape)
+        #print("===================rigid_type_onehot.shape[0]======================",rigid_type_onehot.shape)
+        #print("=================== rigid_property[0]======================", rigid_property.shape)
         
         if angles.shape[0] < self.pad:
             angles = np.pad(
@@ -875,6 +886,7 @@ class CathSideChainAnglesDataset(Dataset):
                 mode="constant",
                 constant_values=0,
             )
+
             rigid_type_onehot = np.pad(
                 rigid_type_onehot,
                 ((0, self.pad - rigid_type_onehot.shape[0]),(0, 0), (0, 0)),
@@ -897,19 +909,19 @@ class CathSideChainAnglesDataset(Dataset):
                 rigid_type_onehot = rigid_type_onehot[: self.pad]
                 rigid_property = rigid_property[: self.pad]
                 
-               # print("*********************angles*******************",angles.shape)
-               # print("*********************coords*******************",coords.shape)
-               # print("*********************acid_embedding*******************",acid_embedding.shape)
-               # print("*********************seq*******************",seq.shape)
-               # print("*********************chi_mask *******************",chi_mask .shape)
-               # print("*********************rigid_type_onehot*******************",rigid_type_onehot.shape)
-               # print("*********************rigid_property*******************",rigid_property.shape)
+                #print("*********************angles*******************",angles.shape)
+                #print("*********************coords*******************",coords.shape)
+                #print("*********************acid_embedding*******************",acid_embedding.shape)
+                #print("*********************seq*******************",seq.shape)
+                #print("*********************chi_mask *******************",chi_mask.shape)
+                #print("*********************rigid_type_onehot*******************",rigid_type_onehot.shape)
+                #print("*********************rigid_property*******************",rigid_property.shape)
             elif self.trim_strategy == "randomcrop":
                 # Randomly crop the sequence to
-                print(self.pad)
+                #print(self.pad)
                 start_idx = self.rng.integers(0, angles.shape[0] - self.pad)
-                print(start_idx)
-                print(angles.shape[0] - self.pad)
+                #print(start_idx)
+                #print(angles.shape[0] - self.pad)
                 end_idx = start_idx + self.pad
                 assert end_idx < angles.shape[0]
                 angles = angles[start_idx:end_idx]
@@ -940,12 +952,15 @@ class CathSideChainAnglesDataset(Dataset):
             angles[:, angular_idx], "<=", np.pi
         ), f"Illegal value: {np.max(angles[:, angular_idx])}"
         
-        angles = torch.from_numpy(angles).float()
-        coords = torch.from_numpy(coords).float()
-        acid_embedding = torch.from_numpy(acid_embedding).float()
-        chi_mask = torch.from_numpy(chi_mask).int()
-        rigid_type_onehot
-        rigid_property
+        angles = torch.from_numpy(angles)
+        coords = torch.from_numpy(coords)
+        acid_embedding = torch.from_numpy(acid_embedding)
+        chi_mask = torch.from_numpy(chi_mask)
+        rigid_type_onehot = torch.from_numpy(rigid_type_onehot)
+        rigid_property = torch.from_numpy(rigid_property)
+      #  print("===============================", type(seq))
+       # seq = torch.from_numpy(seq)
+       # print("===========111====================", seq.shape)
         retval = {
             "angles": angles,
             "attn_mask": attn_mask,
@@ -1328,8 +1343,10 @@ class NoisedAnglesDataset(Dataset):
         if self.dset_key is not None:
             assert isinstance(item, dict)
             vals = item[self.dset_key].clone()
+           # print("============self.dset_key is not None==================",vals)
         else:
             vals = item.clone()
+          #  print("===========else===================",vals)
         assert isinstance(
             vals, torch.Tensor
         ), f"Using dset_key {self.dset_key} - expected tensor but got {type(vals)}"

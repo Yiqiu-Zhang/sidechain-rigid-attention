@@ -177,7 +177,17 @@ def get_torsion_seq(pdb_path):
     model = structure[0]
     chain = model.child_list[0]
     X = []
+    #===============忽略UNK氨基酸=====================
+    removelist = []
+    for res in chain:
+        if res.id[0] == "H_UNK":
+            removelist.append(res.id)
+        elif res.resname == "UNK":
+            removelist.append(res.id)
+    for id in removelist:
+        chain.detach_child(id)
     L = len(chain)
+    #=================忽略UNK氨基酸====================
     rigid_type = np.zeros((L,5))
     rigid_type_mask = np.zeros((L,5))
     rigid_property = np.zeros((L,5,6))
@@ -225,11 +235,11 @@ def get_torsion_seq(pdb_path):
     calc_angles = {"X1": X1, "X2": X2, "X3": X3, "X4": X4}
     angle_list = pd.DataFrame({k: calc_angles[k].squeeze() for k in ANGLES})
 
-    rigid_type = torch.tensor(rigid_type, dtype=torch.int32)
+    rigid_type = torch.tensor(rigid_type, dtype=torch.int64)
     rigid_type_onehot = F.one_hot(rigid_type,20)  # with the empty rigid type 0 
     rigid_type_onehot = rigid_type_onehot * torch.unsqueeze(torch.tensor(rigid_type_mask), -1)
 
-   # rigid_type_onehot = np.array(rigid_type_onehot) #(L,5,20)
+    rigid_type_onehot = np.array(rigid_type_onehot) #(L,5,20)
 
     dict_struct = {'angles': angle_list,
                    'coords': X,

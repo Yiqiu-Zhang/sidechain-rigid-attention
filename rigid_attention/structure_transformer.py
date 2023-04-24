@@ -257,25 +257,38 @@ class Ridge_Transformer(nn.Module):
     def forward(self,
         side_chain_angles: torch.Tensor, #[batch,128,4]
         backbone_coords: torch.Tensor, #[batch,128,4,3]
-        aatype_idx: torch.Tensor,#[batch,128,4,3]
+        aatype_idx: torch.Tensor,#[batch,128,1]
         time_encoded: torch.Tensor, 
         rigid_mask: torch.Tensor,
         x_seq_esm: torch.Tensor,  #[batch,128,1024]
         x_rigid_type: torch.Tensor, #[batch,128,5,19] x_rigid_type[-1]=one hot
         x_rigid_proterty: torch.Tensor, #[batch,128,5,6]
     ):
+     #   print("========rigid transformer start=========")
         x_rigid = self.embedding(x_seq_esm, x_rigid_type, x_rigid_proterty) # [batch,128,5,384]
+     #   print("======== x_rigid  embedding=========")
+
         x_rigid = x_rigid.view(x_rigid.size(0), -1, x_rigid.size(-1)) # [batch,128*5,384]
+     #   print("======== x_rigid  view=========")
         x_rigid = self.pos_encoding(x_rigid) #rigid finish # [batch,128*5,384]
-  
+     #   print("======== x_rigid pos_encoding=========")
+        
         for layer in self.layers:
             rigid_by_residue = structure_build.torsion_to_frame(aatype_idx, backbone_coords, side_chain_angles) # add attention
+      #      print("========  rigid_by_residue=========")
             frame_pair_mask, distance, altered_direction, orientation = structure_build.frame_to_edge(rigid_by_residue, aatype_idx)
+       #     print("======== frame_pair_mask, distance, altered_direction, orientation=========")
             x_rigid = layer(x_rigid, altered_direction,  orientation, frame_pair_mask) # [batch,128, 5, 384]
+        #    print("========  x_rigid_transformer =========")
             x_rigid = self.norm(x_rigid)
-            x_rigid = x_rigid+time_encoded            
+         #   print("========   self.norm(x_rigid) =========")
+            x_rigid = x_rigid+time_encoded
+          #  print("======== x_rigid+time_encoded =========")            
             x_rigid_1  = x_rigid.reshape(x_rigid.shape[0], x_rigid.shape[-2]//5, 5, x_rigid.shape[-1])
-            x_rigid_2 = x_rigid.reshape(x_rigid_1.shape[0], x_rigid_1.shape[-3], -1)            
+         #   print("======== x_rigid_1 =========")   
+            x_rigid_2 = x_rigid.reshape(x_rigid_1.shape[0], x_rigid_1.shape[-3], -1)     
+         #   print("======== x_rigid_2 =========")         
             side_chain_angles = self.predict_angles(x_rigid_2) #[batch,128,4]
+         #   print("======== side_chain_angle =========") 
         return side_chain_angles
 

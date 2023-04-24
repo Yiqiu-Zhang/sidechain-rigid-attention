@@ -8,6 +8,7 @@ from torch.nn import functional as F
 
 from foldingdiff import utils
 
+from write_preds_pdb import constant
 
 def radian_l1_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     """
@@ -17,12 +18,15 @@ def radian_l1_loss(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     >>> radian_l1_loss(torch.tensor(0.1), torch.tensor(2 * np.pi - 0.1))
     tensor(0.2000)
     """
+   # print("==============input===================",input.shape)
+   # print("==============outpt===================",target.shape)
     # https://stackoverflow.com/questions/1878907/how-can-i-find-the-difference-between-two-angles
     target = target % (2 * torch.pi)
     input = input % (2 * torch.pi)
     d = target - input
     d = (d + torch.pi) % (2 * torch.pi) - torch.pi
     retval = torch.abs(d)
+   # print("===================reval==============",retval)
     return torch.mean(retval)
 
 
@@ -42,6 +46,8 @@ def radian_smooth_l1_loss(
     >>> radian_smooth_l1_loss(torch.tensor(-17.0466), torch.tensor(-1.3888), beta=0.1)
     tensor(3.0414)
     """
+   # print("==============input===================",input.shape)
+   # print("==============outpt===================",target.shape)
     assert (
         target.shape == input.shape
     ), f"Mismatched shapes: {input.shape} != {target.shape}"
@@ -51,9 +57,11 @@ def radian_smooth_l1_loss(
 
     abs_d = torch.abs(d)
     retval = torch.where(abs_d < beta, 0.5 * (d**2) / beta, abs_d - 0.5 * beta)
+    #print("===================reval1==============",retval.shape)
     assert torch.all(retval >= 0), f"Got negative loss terms: {torch.min(retval)}"
+    #print("===================reval2==============",retval.shape)
     retval = torch.mean(retval)
-
+    #print("===================reval3==============",retval.shape)
     # Regularize on "turns" around the circle
     if circle_penalty > 0:
         retval += circle_penalty * torch.mean(
@@ -148,7 +156,83 @@ def pairwise_dist_loss(
             loss *= weights
     return torch.mean(loss)
 
+#=======================================new loss=========================================
+#def mask_mean(mask, value, dim, eps=1e-4):
+#    assert mask.shape == value.shape, 'mask shape not same with angles shape'
+#    return torch.sum(mask * value, dim=dim) / (eps + torch.sum(mask, dim=dim))
+#=======================================new loss=========================================
 
+#=======================================new loss=========================================
+'''
+def square_chi_loss(
+    pred_noise: torch.Tensor, # [b,L,4]
+    true_noise: torch.Tensor,# [b,L,4]
+    restype_idx: torch.Tensor, # [b,L] restpyes in number
+    chi_mask: torch.Tensor, # [b,L,4]
+) -> torch.Tensor:
+    assert pred_noise.shape == true_noise.shape, \
+        f"Mismatched shapes: {pred_noise.shape} != {true_noise.shape}"
+
+    pred_noise_sin = torch.sin(pred_noise)
+    pred_noise_cos = torch.cos(pred_noise)
+    pred_noise_sin_cos = torch.stack([pred_noise_sin, pred_noise_cos], dim=-1)
+
+    true_noise_sin = torch.sin(true_noise)
+    true_noise_cos = torch.cos(true_noise)
+    true_noise_sin_cos = torch.stack([true_noise_sin, true_noise_cos], dim=-1)
+
+    sq_chi_error = torch.sum((true_noise_sin_cos - pred_noise_sin_cos)**2, dim=-1)
+
+    sq_chi_loss = mask_mean(chi_mask, sq_chi_error,dim=(-1, -2, -3))
+
+    return sq_chi_loss
+#=======================================new loss=========================================
+
+#=======================================new loss=========================================
+def square_chi_loss_with_periodic(
+    pred_noise: torch.Tensor, # [b,L,4]
+    true_noise: torch.Tensor,# [b,L,4]
+    restype_idx: torch.Tensor, # [b,L] restpyes in number
+    chi_mask: torch.Tensor, # [b,L,4]
+
+) -> torch.Tensor:
+    assert pred_noise.shape == true_noise.shape, \
+        f"Mismatched shapes: {pred_noise.shape} != {true_noise.shape}"
+
+    # [b, L, 21]
+    residue_type_one_hot = F.one_hot(restype_idx, 20 + 1,) # 20 is the number of restype
+
+    # [B, L, 4]
+    chi_pi_periodic = torch.einsum(
+        "...ij,jk->ik",
+        residue_type_one_hot.type(pred_noise.dtype),
+        pred_noise.new_tensor(constant.chi_pi_periodic), # [21, 4]
+    )
+    #[B, L, 4, 1]
+    symmetric_shift = (1 - 2 * chi_pi_periodic).unsqueeze(-1)
+
+
+    pred_noise_sin = torch.sin(pred_noise)
+    pred_noise_cos = torch.cos(pred_noise)
+    pred_noise_sin_cos = torch.stack([pred_noise_sin, pred_noise_cos], dim=-1)
+
+    true_noise_sin = torch.sin(true_noise)
+    true_noise_cos = torch.cos(true_noise)
+    true_noise_sin_cos = torch.stack([true_noise_sin, true_noise_cos], dim=-1)
+
+    sq_chi_error = torch.sum((true_noise_sin_cos - pred_noise_sin_cos)**2, dim=-1)
+
+    # Now calculate symmetric chi error
+    symmetric_noise = symmetric_shift * true_noise_sin_cos
+    symmetric_error = torch.sum((symmetric_noise - pred_noise_sin_cos)**2, dim=-1)
+
+    sq_chi_error = torch.minimum(sq_chi_error, symmetric_error)
+
+    sq_chi_loss = mask_mean(chi_mask, sq_chi_error)
+
+    return sq_chi_loss
+#=======================================new loss=========================================
+'''
 def main():
     lengths = torch.randint(2, 5, size=(16,)) * 3
     x = torch.randn(16, 12, 3)

@@ -3,7 +3,7 @@ Name: foldingdiff
 Version: 0.0.1
 Summary: Diffusion for protein backbone generation using internal angles
 Home-page: https://github.com/microsoft/foldingdiff
-Author: Kevin Wu
+Author: Ying Lv
 Classifier: Programming Language :: Python :: 3
 Classifier: Operating System :: OS Independent
 Requires-Python: >=3.8

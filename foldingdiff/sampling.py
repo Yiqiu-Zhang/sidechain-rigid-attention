@@ -68,7 +68,7 @@ def p_sample(
     model_mean = sqrt_recip_alphas_t * (
         x
         - betas_t
-        * model(x, coords,  seq, t, chi_mask, acid_embedding, rigid_type, rigid_property)
+        * model(x, coords, seq, t, chi_mask, acid_embedding, rigid_type, rigid_property)
         / sqrt_one_minus_alphas_cumprod_t
     )
 
