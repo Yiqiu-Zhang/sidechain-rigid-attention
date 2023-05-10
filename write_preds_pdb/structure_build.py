@@ -148,9 +148,9 @@ def batch_gather(data,  # [N, 14, 3]
 
 def atom14_to_atom37(atom14, aa_idx): # atom14: [*, N, 14, 3]
     
-    residx_atom37_to_atom14 = make_atom14_37_list() #注意有错
+    restype_atom37_to_atom14 = make_atom14_37_list() #注意有错
     
-    residx_atom37_to_14 = residx_atom37_to_atom14[aa_idx]
+    residx_atom37_to_14 = restype_atom37_to_atom14[aa_idx]
     # [N, 37]
     atom37_mask = restype_atom37_mask[aa_idx]
 
@@ -241,7 +241,7 @@ def torsion_to_frame(aatype_idx: torch.Tensor, # [*, N]
 
     all_frames_to_global = geometry.Rigid_mult(bb_to_gb[..., None], sc_to_bb)
 
-    return all_frames_to_global
+    return all_frames_to_global # return frame 
 
 def frame_to_edge(frames, # [*, N, 5]
                   aatype_idx # [*, N]
@@ -295,31 +295,36 @@ with open(produced_pdb_file_path, 'w') as fp:
     fp.write(pdb_str)
 '''
 
-def write_preds_pdb_file(dataset, sampled_dfs, out_path):
+def write_preds_pdb_file(structure, sampled_dfs, out_path, fname, j):
     
-    temp_dict = list(dataset[0].keys())
-    print(temp_dict)
-    final_atom_mask = restype_atom37_mask[dataset[0]["seq"]]
-    print(" final_atom_mask=", final_atom_mask[0])
-    print(" final_atom_mask type", type(final_atom_mask))
+    temp_dict = list(structure.keys())
+   # print(temp_dict)
+    final_atom_mask = restype_atom37_mask[structure["seq"]]
+    #print(" final_atom_mask=", final_atom_mask)
+    #print(" final_atom_mask type", type(final_atom_mask))
   #  print("sampled_dfs[0]",sampled_dfs[0])
-    print("sampled_dfs[0]",type(sampled_dfs[0]))
-
-    seq_list = torch.from_numpy(dataset[0]["seq"])
+    #print("sampled_dfs[0]",type(sampled_dfs))
+  #  print("===========================seq=",dataset["seq"])
+    seq_list = torch.from_numpy(structure["seq"])
     #print("dataset[0][coords]",type(dataset[0]["coords"]))
-    coord_list =  dataset[0]["coords"]
-    angle_list = torch.from_numpy(sampled_dfs[0])
-    print("seq_list==",seq_list.shape)
-    print("coord_list==",coord_list.shape)
-    print("angle_list==",angle_list.shape)
+    coord_list = structure["coords"]
+    
+    coord_list = torch.from_numpy(coord_list)
+    angle_list = torch.from_numpy(sampled_dfs)
+    #print("seq_list==",seq_list.shape)
+    #print("coord_list==",coord_list.shape)
+    #print("angle_list==",angle_list.shape)
+    
+    
+    
     final_atom_positions = torsion_to_position(seq_list, 
                                                coord_list,
-                                                angle_list)
+                                                angle_list) 
     
     chain_len = len(seq_list)
     index = np.arange(1,chain_len+1)
     resulted_protein = protein.Protein(
-                            aatype=dataset[0]["seq"], # [*,N]
+                            aatype=structure["seq"], # [*,N]
                             atom_positions=final_atom_positions,
                             atom_mask=final_atom_mask,
                             residue_index=index, #0,1,2,3,4 range_chain
@@ -327,5 +332,6 @@ def write_preds_pdb_file(dataset, sampled_dfs, out_path):
     
     pdb_str = protein.to_pdb(resulted_protein) 
     
-    with open(os.path.join(out_path,"generate_0.pdb"), 'w') as fp:
+    with open(os.path.join(out_path,f"{fname}_generate_{j}.pdb"), 'w') as fp:
          fp.write(pdb_str)
+         

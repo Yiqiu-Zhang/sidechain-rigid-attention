@@ -30,8 +30,14 @@ from foldingdiff.datasets import AnglesEmptyDataset, NoisedAnglesDataset
 from foldingdiff.angles_and_coords import create_new_chain_nerf
 from foldingdiff import utils
 
-sys.path.append(r"/mnt/petrelfs/lvying/code/sidechain-rigid-attention/write_preds_pdb")
+import glob
+sys.path.append(r"../write_preds_pdb")
 from structure_build import write_preds_pdb_file
+
+
+sys.path.append(r"../foldingdiff")
+from ESM1b_embedding import add_esm1b_embedding
+from PDB_processing import get_torsion_seq
 
 # :)
 SEED = int(
@@ -288,8 +294,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--seed", type=int, default=SEED, help="Random seed")
     parser.add_argument("--device", type=str, default="cuda:0", help="Device to use")
+    
+    #=============================lvying ======================================================
+    parser.add_argument(
+        "-c",
+        "--CATH_DIR",
+        type=str,
+        default="../data/test/",
+        help="backbone pdb",
+    )
+    #=============================lvying ======================================================
+
     return parser
 
+#============================================import data========================================
+
+def get_pdb_data(CATH_DIR):
+    
+    fnames = glob.glob(os.path.join(CATH_DIR, "dompdb", "*"))
+    structures = []
+    pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+    structures = list(pool.map(get_torsion_seq,fnames, chunksize=250))
+    pool.close()
+    pool.join()
+
+    return structures
+#============================================import data========================================
 
 def main() -> None:
     """Run the script"""
@@ -346,7 +376,58 @@ def main() -> None:
     model = modelling.AngleDiffusionBase.from_dir(
         args.model, copy_to=model_snapshot_dir
     ).to(torch.device(args.device))
+    
+    torch.manual_seed(args.seed)
+    
+    #============================================sampling========================================
 
+    structures = get_pdb_data(args.CATH_DIR)
+    structures = add_esm1b_embedding(structures,32)
+    sampled_angles_folder = outdir / "sampled_angles"
+    os.makedirs(sampled_angles_folder, exist_ok=True)
+    outdir_pdb = outdir / "sampled_pdb"
+    os.makedirs(outdir_pdb, exist_ok=True)
+    for structure in structures:
+        sweep_min_len, sweep_max_len = args.lengths
+        if len(structure['seq'])>128:
+            print('length>128')
+            continue
+        print("=============fname=================",structure['fname'])
+        print("=============seq=================",structure['seq'])
+        sampled = sampling.sample(
+            model,
+            train_dset,
+            structure,
+            n=args.num,
+            sweep_lengths=(sweep_min_len, sweep_max_len),
+            batch_size=args.batchsize,
+        )
+        final_sampled = [s[-1] for s in sampled]
+        sampled_dfs = [
+            pd.DataFrame(s, columns=train_dset.feature_names["angles"])
+            for s in final_sampled
+        ]
+        # Write the raw sampled items to csv files
+        logging.info(f"Writing sampled angles to {sampled_angles_folder}")
+        print(structure['fname'])
+        print(type(structure['fname']))
+        pdbname = Path(structure['fname']).name
+        print(pdbname)
+        print(type(pdbname))
+        for i, s in enumerate(sampled_dfs):
+            s.to_csv(sampled_angles_folder / f"{pdbname}_generated_{i}.csv.gz")
+        j = 0
+        for sampled_angle in final_sampled: 
+            print("===========tttttt=============",len(sampled_angle))
+            write_preds_pdb_file(structure,sampled_angle, outdir_pdb, pdbname, j)
+            j = j+1
+    #============================================sampling========================================
+    
+    
+    
+    
+    
+    '''
     # Checks
     sweep_min_len, sweep_max_len = args.lengths
     assert sweep_min_len < sweep_max_len
@@ -354,6 +435,7 @@ def main() -> None:
 
     # Perform sampling
     torch.manual_seed(args.seed)
+    
     sampled = sampling.sample(
         model,
         train_dset,
@@ -415,6 +497,7 @@ def main() -> None:
             write_preds_pdb_folder(
                 snapshot_dfs, ith_pdb_dir, basename_prefix=f"generated_{i}_timestep_"
             )
+    '''
     '''
     # Generate histograms of sampled angles -- separate plots, and a combined plot
     # For calculating angle distributions

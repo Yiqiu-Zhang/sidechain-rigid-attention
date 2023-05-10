@@ -5,36 +5,13 @@ import numpy as np
 import pandas as pd
 import torch.nn.functional as F
 
-'''
-AA_TO_ID = {
-    "A": 0,
-    "B": 2,
-    "C": 1,
-    "D": 2,
-    "E": 3,
-    "F": 4,
-    "G": 5,
-    "H": 6,
-    "I": 7,
-    "J": 20,
-    "K": 8,
-    "L": 9,
-    "M": 10,
-    "N": 11,
-    "O": 20,
-    "P": 12,
-    "Q": 13,
-    "R": 14,
-    "S": 15,
-    "T": 16,
-    "U": 1,
-    "V": 17,
-    "W": 18,
-    "Y": 19,
-    "Z": 3,
-}
-'''
-AA_TO_ID = {"A":0,"C":1,"D":2,"E":3,"F":4,"G":5,"H":6,"I":7,"K":8,"L":9,"M":10,"N":11,"P":12,"Q":13,"R":14,"S":15,"T":16,"V":17,"W":18,"Y":19 }
+
+
+restypes = ['A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K', 'M', 'F', 'P',
+            'S', 'T', 'W', 'Y', 'V', 'X'] # with the UNK residue
+
+AA_TO_ID = {restype: i for i, restype in enumerate(restypes)}
+
 
 ANGLES = ["X1", "X2", "X3","X4"]
 chi_angles_atoms = {
@@ -81,6 +58,7 @@ chi_angles_atoms = {
     "TRP": [["N", "CA", "CB", "CG"], ["CA", "CB", "CG", "CD1"]],
     "TYR": [["N", "CA", "CB", "CG"], ["CA", "CB", "CG", "CD1"]],
     "VAL": [["N", "CA", "CB", "CG1"]],
+    "UNK": [] # 添加 UNKNOWN residue
 }
 restype_1to3 = {
     "A": "ALA",
@@ -103,6 +81,7 @@ restype_1to3 = {
     "W": "TRP",
     "Y": "TYR",
     "V": "VAL",
+    "X": "UNK", # 添加 UNKNOWN residue
 }
 restype_3to1 = {v: k for k, v in restype_1to3.items()}
 bb_atoms = ['N', 'CA', 'C', 'O']
@@ -128,6 +107,7 @@ restype_name_to_rigid_idx = {
     "TRP": [1,8,14],
     "TYR": [1,8,13],
     "VAL": [1,7],
+    "UNK": [1], #给 UNKNOWN res 只添加主链 rigid 其他原子先不管
 }
 '''
 type 0: mask type
@@ -169,6 +149,7 @@ def acid_to_number(seq, mapping):
     return num_list
 
 def get_torsion_seq(pdb_path):
+    print("===================pdb_path===========================",pdb_path)
     torsion_list = []
     chi_mask =[]
     seq = []
@@ -177,17 +158,13 @@ def get_torsion_seq(pdb_path):
     model = structure[0]
     chain = model.child_list[0]
     X = []
-    #===============忽略UNK氨基酸=====================
     removelist = []
     for res in chain:
-        if res.id[0] == "H_UNK":
-            removelist.append(res.id)
-        elif res.resname == "UNK":
+        if res.id[0] != " ":
             removelist.append(res.id)
     for id in removelist:
         chain.detach_child(id)
     L = len(chain)
-    #=================忽略UNK氨基酸====================
     rigid_type = np.zeros((L,5))
     rigid_type_mask = np.zeros((L,5))
     rigid_property = np.zeros((L,5,6))
@@ -196,9 +173,7 @@ def get_torsion_seq(pdb_path):
 
         chi_list = [0] * 4
         temp_mask =[0] * 4
-        # Skip hetero atoms
-        if res.id[0] != " ":
-            continue
+        
 
         res_name = res.resname
         seq.append(restype_3to1[res_name])

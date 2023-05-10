@@ -150,6 +150,7 @@ def p_sample_loop(
 def sample(
     model: nn.Module,
     train_dset: dsets.NoisedAnglesDataset,
+    structure,
     n: int = 10,
     sweep_lengths: Optional[Tuple[int, int]] = (50, 128),
     batch_size: int = 1,
@@ -186,26 +187,19 @@ def sample(
 
     logging.info(f"Sampling {len(lengths)} items in batches of size {batch_size}")
     retval = []
-    temp_c = train_dset[0]["coords"]
-    temp_e = train_dset[0]["acid_embedding"]
-    temp_s = train_dset[0]["seq"]
+    temp_c = structure["coords"]
+    temp_c = torch.from_numpy(temp_c)
+    temp_e = structure["acid_embedding"]
+    temp_e = torch.from_numpy(temp_e)
+    temp_s = structure["seq"]
     temp_s = torch.from_numpy(temp_s)
-    temp_chi = train_dset[0]["chi_mask"]
-    temp_rt = train_dset[0]["rigid_type_onehot"]
+    temp_chi = structure["chi_mask"]
+    temp_chi = torch.from_numpy(temp_chi)
+    temp_rt = structure["rigid_type_onehot"]
     temp_rt = torch.from_numpy(temp_rt)
-    temp_rp = train_dset[0]["rigid_property"]
+    temp_rp = structure["rigid_property"]
     temp_rp= torch.from_numpy(temp_rp)
-    print("***********************************pdf_name********************************",train_dset[0].keys())
-    print("=================train_dset.[0][coords]=================",train_dset[0]["coords"].shape)
-    print("=================train_dset.[0][acid_embedding]=================",train_dset[0]["seq"].shape)
-    print("=================train_dset.[0][acid_embedding]=================",temp_rt.shape)
-   # coords = temp_c.repeat(512,1,1,1).cuda()
-    print("=================train_dset.[0][acid_embedding]=================",temp_rp.shape)
-   # coords = temp_c.repeat(512,1,1,1).cuda()
-   # coords = temp_c.repeat(512,1,1,1).cuda()
-   # print("=================train_dset.[0][coords]=================",train_dset[0]["coords"].shape)
-  #  print("=================coords=================",coords.shape)
-    print("=================lengths_chunkified=================",lengths_chunkified)
+    
     
     for this_lengths in lengths_chunkified:
         batch = len(this_lengths)
@@ -216,17 +210,12 @@ def sample(
         chi_mask = temp_chi.repeat(batch,1,1).cuda()
         rigid_type = temp_rt.repeat(batch,1,1,1).cuda()
         rigid_property = temp_rp.repeat(batch,1,1,1).cuda()
-        print("======================coords=======================",coords.shape)
-        print("======================acid_embedding=======================",acid_embedding.shape)
-        print("======================seq=======================",seq.shape)
-        print("======================chi_mask=======================",chi_mask.shape)
-        print("======================rigid_type=======================",rigid_type.shape)
-        print("======================rigid_property=======================",rigid_property.shape)
+
         noise = train_dset.sample_noise(
-            torch.zeros((batch, train_dset.pad, model.n_inputs), dtype=torch.float32)
+             torch.zeros((batch, seq.shape[-1], model.n_inputs), dtype=torch.float32)
         )
         # Produces (timesteps, batch_size, seq_len, n_ft)
-        this_lengths = [128, 128, 128, 128, 128, 128, 128, 128, 128, 128]
+        this_lengths =  [seq.shape[-1], seq.shape[-1], seq.shape[-1], seq.shape[-1],seq.shape[-1], seq.shape[-1], seq.shape[-1], seq.shape[-1],seq.shape[-1], seq.shape[-1]]
         sampled = p_sample_loop(
             model=model,
             coords = coords,

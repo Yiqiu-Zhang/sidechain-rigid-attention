@@ -157,13 +157,13 @@ def pairwise_dist_loss(
     return torch.mean(loss)
 
 #=======================================new loss=========================================
-#def mask_mean(mask, value, dim, eps=1e-4):
-#    assert mask.shape == value.shape, 'mask shape not same with angles shape'
-#    return torch.sum(mask * value, dim=dim) / (eps + torch.sum(mask, dim=dim))
+def mask_mean(mask, value, dim, eps=1e-4):
+    assert mask.shape == value.shape, 'mask shape not same with angles shape'
+    return torch.sum(mask * value, dim=dim) / (eps + torch.sum(mask, dim=dim))
 #=======================================new loss=========================================
 
 #=======================================new loss=========================================
-'''
+
 def square_chi_loss(
     pred_noise: torch.Tensor, # [b,L,4]
     true_noise: torch.Tensor,# [b,L,4]
@@ -181,9 +181,10 @@ def square_chi_loss(
     true_noise_cos = torch.cos(true_noise)
     true_noise_sin_cos = torch.stack([true_noise_sin, true_noise_cos], dim=-1)
 
-    sq_chi_error = torch.sum((true_noise_sin_cos - pred_noise_sin_cos)**2, dim=-1)
+    sq_chi_error = torch.sum((true_noise_sin_cos - pred_noise_sin_cos)**2, dim=-1) 
 
-    sq_chi_loss = mask_mean(chi_mask, sq_chi_error,dim=(-1, -2, -3))
+    sq_chi_loss = mask_mean(chi_mask, sq_chi_error,dim=(-2, -3))
+
 
     return sq_chi_loss
 #=======================================new loss=========================================
@@ -228,11 +229,11 @@ def square_chi_loss_with_periodic(
 
     sq_chi_error = torch.minimum(sq_chi_error, symmetric_error)
 
-    sq_chi_loss = mask_mean(chi_mask, sq_chi_error)
+    sq_chi_loss = mask_mean(chi_mask, sq_chi_error,dim=( -2, -3))
 
     return sq_chi_loss
 #=======================================new loss=========================================
-'''
+
 def main():
     lengths = torch.randint(2, 5, size=(16,)) * 3
     x = torch.randn(16, 12, 3)
@@ -247,3 +248,4 @@ if __name__ == "__main__":
 
     doctest.testmod()
     main()
+

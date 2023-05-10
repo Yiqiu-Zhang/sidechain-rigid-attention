@@ -451,7 +451,7 @@ class Ridge_Transformer(nn.Module):
     ):  
         super(Ridge_Transformer, self).__init__()
         self.embedding = Ridig_Embeddings(d_model, d_esm_seq, n_rigid_type, n_rigid_property) 
-        self.pos_encoding = acid_SinusoidalPositionalEncoding(d_model, dropout, max_seq_len)
+        self.pos_encoding = SinusoidalPositionalEncoding(d_model, dropout, max_seq_len)
         self.layers = nn.ModuleList([EncoderLayer(d_model, n_heads, d_ff) for _ in range(n_layers)])
         self.predict_angles = AnglesPredictor(d_model*5, d_angles)
         self.predict_noise = NoisePredictor(d_model*5,d_angles)
@@ -470,7 +470,7 @@ class Ridge_Transformer(nn.Module):
      #   print("========rigid transformer start=========")
         x_rigid = self.embedding(x_seq_esm, x_rigid_type, x_rigid_proterty) # [batch,128,5,384]
      #   print("======== x_rigid  embedding=========")
-
+       
 
         x_rigid = self.pos_encoding(x_rigid) #rigid finish # [batch,128,5,384]
         
@@ -490,4 +490,3 @@ class Ridge_Transformer(nn.Module):
             side_chain_angles = self.predict_angles(x_rigid_2) #[batch,128,4]
         noise = self.predict_noise(x_rigid_2,x_rigid_init)
         return noise
-    

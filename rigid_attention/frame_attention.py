@@ -135,16 +135,6 @@ class ConvRelativePositionalEncoding(nn.Module):
 
         return self.dropout(x)       
 
-def calculate_rbf(D):
-    # Distance radial basis function
-    D_min, D_max, D_count = 0., 20., 16
-    D_mu = torch.linspace(D_min, D_max, D_count)
-    D_mu = D_mu.view([1, 1, 1, -1]).to('cuda')
-    D_sigma = (D_max - D_min) / D_count
-    D_expand = torch.unsqueeze(D, -1).to('cuda')
-    RBF = torch.exp(-((D_expand - D_mu) / D_sigma)**2)
-    return RBF
-
 # define the multi ridge attention
 class Rigid_MultiHeadAttention(nn.Module):
     def __init__(self, d_model, n_heads):
@@ -158,34 +148,15 @@ class Rigid_MultiHeadAttention(nn.Module):
         self.value = nn.Linear(d_model, d_model, dtype=torch.float64)
         self.value_3d = nn.Linear(d_model, 3, dtype=torch.float64)
         self.fc = nn.Linear(d_model+3, d_model, dtype=torch.float64)
-        self.mlp =  nn.Sequential(
-                  nn.Linear(16, 8, dtype=torch.float64),
-                  nn.ReLU(),
-                  nn.Linear(8, 1, dtype=torch.float64)
-        )
 
-        
-    def forward(self, x_rigid, altered_direction, orientation, distance, attention_mask= None, frame_pair_mask=None, seq_correlation_matrix=None, ):
+    def forward(self, x_rigid, altered_direction, orientation, attention_mask= None, frame_pair_mask=None, seq_correlation_matrix=None, distance =None):
         bsz = x_rigid.size(0)
         q = self.query(x_rigid).view(bsz, -1, self.n_heads, self.head_dim).transpose(1, 2)  # [batch, n_heads, rigid_len, head_dim] [batch, 8, 128*5, 96]
         k = self.key(x_rigid).view(bsz, -1, self.n_heads, self.head_dim).transpose(1, 2)  # [batch, 8, 128*5, 96]
         v = self.value(x_rigid).view(bsz, -1, self.n_heads, self.head_dim).transpose(1, 2)  # [batch, 8, 128*5, 96]
         v_3d = self.value_3d(x_rigid) #[batch, 128*5, 3] 
         scores = torch.matmul(q, k.transpose(-2, -1)) / torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float)) #[batch, n_heads, rigid_len, rigid_len] [batch,8,128*5,128*5]
-       # print('===========================distance==================',distance)
-        rbf = calculate_rbf(distance)
-        #print("==================rbf1=================",rbf.shape)
-
-        rbf = rbf.unsqueeze(1).repeat(1, 8, 1,1,1).double()
-        #print("==================rbf2=================",rbf.shape)
         
-        rbf = self.mlp(rbf)
-
-        #print("==================rbf3=================",rbf.shape)
-        dis = rbf.view(rbf.shape[0],rbf.shape[1],rbf.shape[2],rbf.shape[3])
-        #print("==================rbf4=================",dis.shape)
-        scores = scores + dis
-        #print("==================rbf4=================",scores.shape)
         attention_mask = attention_mask.unsqueeze(-3).to('cuda')
         attention_mask = attention_mask.repeat(1, 8, 1, 1).to('cuda')
         if attention_mask is not None:
@@ -229,12 +200,12 @@ class EncoderLayer(nn.Module):
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
    
-    def forward(self, x_rigid, altered_direction,  orientation, rigid_mask, distance, frame_pair_mask=None, seq_correlation_matrix=None):
+    def forward(self, x_rigid, altered_direction,  orientation, rigid_mask, frame_pair_mask=None, seq_correlation_matrix=None, distance =None):
         # Self-attention
         residual = x_rigid
         x_rigid = self.norm1(x_rigid)
         
-        x_rigid = self.self_attn(x_rigid, altered_direction, orientation, rigid_mask,distance)
+        x_rigid = self.self_attn(x_rigid, altered_direction, orientation, rigid_mask)
         x_rigid = residual +self.dropout1(x_rigid)
 
         # Feed forward
@@ -283,24 +254,24 @@ class NoisePredictor(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.d_out = d_out
-        self.dense1 = nn.Linear(d_model, d_model//5, dtype=torch.float64)
-        self.dense2 = nn.Linear(d_model, d_model//5, dtype=torch.float64)
+        self.dense1 = nn.Linear(d_model, d_model, dtype=torch.float64)
+        self.dense2 = nn.Linear(d_model, d_model, dtype=torch.float64)
         self.dense3 =nn.Sequential(
                   nn.ReLU(),
-                  nn.Linear(d_model//5, d_model//5, dtype=torch.float64),
+                  nn.Linear(d_model, d_model, dtype=torch.float64),
                   nn.ReLU(),
-                  nn.Linear(d_model//5, d_model//5, dtype=torch.float64)
+                  nn.Linear(d_model, d_model, dtype=torch.float64)
         )
         self.dense4 = nn.Sequential(
                   nn.ReLU(),
-                  nn.Linear(d_model//5, d_model//5, dtype=torch.float64),
+                  nn.Linear(d_model, d_model, dtype=torch.float64),
                   nn.ReLU(),
-                  nn.Linear(d_model//5, d_model//5, dtype=torch.float64)
+                  nn.Linear(d_model, d_model, dtype=torch.float64)
 
         )
         self.dense5 = nn.Sequential(
                   nn.ReLU(),
-                  nn.Linear(d_model//5, d_out, dtype=torch.float64)
+                  nn.Linear(d_model, d_out, dtype=torch.float64)
         )
 
     def forward(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
@@ -475,16 +446,13 @@ class Ridge_Transformer(nn.Module):
         x_rigid = self.pos_encoding(x_rigid) #rigid finish # [batch,128,5,384]
         
         x_rigid = x_rigid.view(x_rigid.size(0), -1, x_rigid.size(-1)) # [batch,128*5,384]
-        
-        x_rigid_11  = x_rigid.reshape(x_rigid.shape[0], x_rigid.shape[-2]//5, 5, x_rigid.shape[-1])
-        x_rigid_22 = x_rigid.reshape(x_rigid_11.shape[0], x_rigid_11.shape[-3], -1)  
-        x_rigid_init = x_rigid_22
-        x_rigid = x_rigid+time_encoded
+        x_rigid_init = x_rigid
         for layer in self.layers:
-            rigid_by_residue = structure_build.torsion_to_frame(aatype_idx, backbone_coords, side_chain_angles) # add attention #frame 
+            rigid_by_residue = structure_build.torsion_to_frame(aatype_idx, backbone_coords, side_chain_angles) # add attention
             frame_pair_mask, distance, altered_direction, orientation = structure_build.frame_to_edge(rigid_by_residue, aatype_idx)
-            x_rigid = layer(x_rigid, altered_direction,  orientation, frame_pair_mask, distance) # [batch,128, 5, 384]
+            x_rigid = layer(x_rigid, altered_direction,  orientation, frame_pair_mask) # [batch,128, 5, 384]
             x_rigid = self.norm(x_rigid)
+            x_rigid = x_rigid+time_encoded
             x_rigid_1  = x_rigid.reshape(x_rigid.shape[0], x_rigid.shape[-2]//5, 5, x_rigid.shape[-1])
             x_rigid_2 = x_rigid.reshape(x_rigid_1.shape[0], x_rigid_1.shape[-3], -1)     
             side_chain_angles = self.predict_angles(x_rigid_2) #[batch,128,4]

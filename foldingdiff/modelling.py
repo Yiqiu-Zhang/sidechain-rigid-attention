@@ -233,8 +233,8 @@ class AngleDiffusionBase(nn.Module):
             losses.radian_smooth_l1_loss, beta=torch.pi / 10
         ),
         #========================new loss==============================
-        #"sin_cos": losses.square_chi_loss,
-        #"symmetric_sin_cos": losses.square_chi_loss_with_periodic,
+        "sin_cos": losses.square_chi_loss,
+        "symmetric_sin_cos": losses.square_chi_loss_with_periodic,
         #========================new loss==============================
     }
     # To have legacy models still work with these
@@ -443,7 +443,7 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
     def __init__(
         self,
         lr: float = 5e-5,
-        loss: Union[Callable, LOSS_KEYS] = "smooth_l1",
+        loss: Union[Callable, LOSS_KEYS] = "smooth_l1", # loss is str or function
         use_pairwise_dist_loss: Union[float, Tuple[float, float, int]] = 0.0,
         l2: float = 0.0,
         l1: float = 0.0,
@@ -470,7 +470,7 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
                         loss, self.loss_autocorrect_dict[loss]
                     )
                 )
-                loss = self.loss_autocorrect_dict[loss]
+                loss = self.loss_autocorrect_dict[loss]  # 等号左侧的loss为str，右侧的也为str
             self.loss_func = [
                 self.angular_loss_fn_dict[loss]
                 if is_angular
@@ -521,10 +521,10 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
             batch['rigid_type_onehot'], #[batch,128,5,19] x_rigid_type[-1]=one hot
             batch['rigid_property'], #[batch,128,5,6]
         )
-        print("====================predicted_noise.shape=================================",predicted_noise.shape)
+       # print("====================predicted_noise.shape=================================",predicted_noise.shape)
         predicted_noise = torch.mul(predicted_noise, batch['chi_mask'])
         known_noise = torch.mul(known_noise, batch['chi_mask'])
-        print("====================predicted_noise.shape=================================",predicted_noise.shape)
+      #  print("====================predicted_noise.shape=================================",predicted_noise.shape)
 
         assert (
             known_noise.shape == predicted_noise.shape
@@ -535,10 +535,10 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         # two lists of values, one for each dimension
         # known_noise has shape (batch, seq_len, num_fts)
         unmask_idx = torch.where(batch["attn_mask"])
-        print("====================predicted_noise[unmask_idx[0], unmask_idx[1], 0]======================",predicted_noise[unmask_idx[0], unmask_idx[1], 0])
+      #  print("====================predicted_noise[unmask_idx[0], unmask_idx[1], 0]======================",predicted_noise[unmask_idx[0], unmask_idx[1], 0])
         assert len(unmask_idx) == 2
         loss_terms = []
-        print("+++===++++++++++known_noise.shape[-1]+++++++++++++++++",known_noise.shape[-1])
+      #  print("+++===++++++++++known_noise.shape[-1]+++++++++++++++++",known_noise.shape[-1])
         for i in range(known_noise.shape[-1]):
             loss_fn = (
                 self.loss_func[i]
@@ -644,7 +644,7 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         return torch.stack(loss_terms)
     
     #=======================================new loss=========================================
-    '''
+    
     def _get_loss_terms_changed(
         self, batch: torch.Tensor,
         write_preds: Optional[str] = None
@@ -656,28 +656,38 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         known_noise = batch["known_noise"]
         
         predicted_noise = self.forward(
-            batch["corrupted"],
-            batch["coords"],
-            batch["acid_embedding"],
-            batch["t"],
-            attention_mask=batch["attn_mask"],
-            position_ids=batch["position_ids"],
+            batch["corrupted"],  #[batch,128,4]
+            batch["coords"], #[batch,128,4,3]
+            batch["seq"], #[batch,128,4]
+            batch["t"], 
+            batch["chi_mask"],
+            batch["acid_embedding"],  #[batch,128,1024]
+            batch['rigid_type_onehot'], #[batch,128,5,19] x_rigid_type[-1]=one hot
+            batch['rigid_property'], #[batch,128,5,6]
         )
 
         assert (known_noise.shape == predicted_noise.shape), f"{known_noise.shape} != {predicted_noise.shape}"
 
 
 
-        loss_fn = self.angular_loss_fn_dict['sin_cos']
+        loss_fn = self.angular_loss_fn_dict['symmetric_sin_cos']
         loss_terms = loss_fn(
             predicted_noise,
             known_noise,
             batch['seq'],  # [b,L] restpyes in number
             batch['chi_mask'],  # [b,L,4]  Padded in chi_mask so no need to use padding mask
         )
-
+        if write_preds is not None:
+            with open(write_preds, "w") as f:
+                d_to_write = {
+                    "known_noise": known_noise.cpu().numpy().tolist(),
+                    "predicted_noise": predicted_noise.cpu().numpy().tolist(),
+                    "attn_mask": batch["chi_mask"].cpu().numpy().tolist(),
+                    "losses": [l.item() for l in loss_terms],
+                }
+                json.dump(d_to_write, f)        
         return loss_terms   
-    '''
+    
     #=======================================new loss=========================================
     
     def training_step(self, batch, batch_idx):

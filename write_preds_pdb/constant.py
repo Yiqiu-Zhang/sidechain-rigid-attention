@@ -2,9 +2,12 @@ import numpy as np
 import torch
 
 restypes = ['A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K', 'M', 'F', 'P',
-            'S', 'T', 'W', 'Y', 'V']
+            'S', 'T', 'W', 'Y', 'V', 'X'] # with the UNK residue
 
-restype_num = len(restypes) # 20
+restype_order = {restype: i for i, restype in enumerate(restypes)}
+
+
+restype_num = len(restypes) # 20 # Now 21 with UNK res
 
 restype_1to3 = {
     'A': 'ALA',
@@ -27,6 +30,7 @@ restype_1to3 = {
     'W': 'TRP',
     'Y': 'TYR',
     'V': 'VAL',
+    'X': 'UNK', #With UNK res as a restype
 }
 
 # A compact atom encoding with 14 columns
@@ -53,7 +57,7 @@ restype_name_to_atom14_names = {
     'TRP': ['N', 'CA', 'C', 'O', 'CB', 'CG',  'CD1', 'CD2', 'NE1', 'CE2', 'CE3', 'CZ2', 'CZ3', 'CH2'],
     'TYR': ['N', 'CA', 'C', 'O', 'CB', 'CG',  'CD1', 'CD2', 'CE1', 'CE2', 'CZ',  'OH',  '',    ''],
     'VAL': ['N', 'CA', 'C', 'O', 'CB', 'CG1', 'CG2', '',    '',    '',    '',    '',    '',    ''],
-    'UNK': ['',  '',   '',  '',  '',   '',    '',    '',    '',    '',    '',    '',    '',    ''],
+    'UNK': ['N', 'CA', 'C', 'O', 'CB',   '',    '',    '',    '',    '',    '',    '',    '',    ''], # 给侧链原子
 
 }
 
@@ -282,6 +286,16 @@ residues_atom_position = {
         ['CG1', 4, (0.540, 1.429, -0.000)],
         ['CG2', 4, (0.533, -0.776, 1.203)],
     ],
+    'UNK': [ # Adding Atom for UNK residues, as UNK can be different res, here
+             # I am naively using ALA's atom position. Notice that this can be wrong
+             # when we Modify the Main chain position
+             # 算主链的时候要注意这个，UNK 用不同的氨基酸原子位置可能导致其他res的位置不准确
+        ['N', 0, (-0.525, 1.363, 0.000)],
+        ['CA', 0, (0.000, 0.000, 0.000)],
+        ['C', 0, (1.526, -0.000, -0.000)],
+        ['CB', 0, (-0.529, -0.774, -1.205)],
+        ['O', 3, (0.627, 1.062, 0.000)],
+    ],
 }
 
 # Mask the useless chi angle for each residue. 1 means used, 0 means useless.
@@ -306,6 +320,31 @@ chi_angles_mask = [
     [1.0, 1.0, 0.0, 0.0],  # TRP
     [1.0, 1.0, 0.0, 0.0],  # TYR
     [1.0, 0.0, 0.0, 0.0],  # VAL
+    [0.0, 0.0, 0.0, 0.0],  # UNK 暂且先不给UNK 安排任何chi angle
+]
+#
+restype_frame_mask = [
+    [1.0, 0.0, 0.0, 0.0, 0.0],  # ALA
+    [1.0, 1.0, 1.0, 1.0, 1.0],  # ARG
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # ASN
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # ASP
+    [1.0, 1.0, 0.0, 0.0, 0.0],  # CYS
+    [1.0, 1.0, 1.0, 1.0, 0.0],  # GLN
+    [1.0, 1.0, 1.0, 1.0, 0.0],  # GLU
+    [1.0, 0.0, 0.0, 0.0, 0.0],  # GLY
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # HIS
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # ILE
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # LEU
+    [1.0, 1.0, 1.0, 1.0, 1.0],  # LYS
+    [1.0, 1.0, 1.0, 1.0, 0.0],  # MET
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # PHE
+    [1.0, 0.0, 0.0, 0.0, 0.0],  # PRO # only PRO different from Alphafold chi_angles_mask
+    [1.0, 1.0, 0.0, 0.0, 0.0],  # SER
+    [1.0, 1.0, 0.0, 0.0, 0.0],  # THR
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # TRP
+    [1.0, 1.0, 1.0, 0.0, 0.0],  # TYR
+    [1.0, 1.0, 0.0, 0.0, 0.0],  # VAL
+    [1.0, 0.0, 0.0, 0.0, 0.0],  # UNK 只有主链
 ]
 
 # The following chi angles are pi periodic: they can be rotated by a multiple
@@ -333,29 +372,7 @@ chi_pi_periodic = [
     [0.0, 0.0, 0.0, 0.0],  # VAL
     [0.0, 0.0, 0.0, 0.0],  # UNK
 ]
-#
-restype_frame_mask = [
-    [1.0, 0.0, 0.0, 0.0, 0.0],  # ALA
-    [1.0, 1.0, 1.0, 1.0, 1.0],  # ARG
-    [1.0, 1.0, 1.0, 0.0, 0.0],  # ASN
-    [1.0, 1.0, 1.0, 0.0, 0.0],  # ASP
-    [1.0, 1.0, 0.0, 0.0, 0.0],  # CYS
-    [1.0, 1.0, 1.0, 1.0, 0.0],  # GLN
-    [1.0, 1.0, 1.0, 1.0, 0.0],  # GLU
-    [1.0, 0.0, 0.0, 0.0, 0.0],  # GLY
-    [1.0, 1.0, 1.0, 0.0, 0.0],  # HIS
-    [1.0, 1.0, 1.0, 0.0, 0.0],  # ILE
-    [1.0, 1.0, 1.0, 0.0, 0.0],  # LEU
-    [1.0, 1.0, 1.0, 1.0, 1.0],  # LYS
-    [1.0, 1.0, 1.0, 1.0, 0.0],  # MET
-    [1.0, 1.0, 1.0, 0.0, 0.0],  # PHE
-    [1.0, 0.0, 0.0, 0.0, 0.0],  # PRO # only PRO different from Alphafold chi_angles_mask
-    [1.0, 1.0, 0.0, 0.0, 0.0],  # SER
-    [1.0, 1.0, 0.0, 0.0, 0.0],  # THR
-    [1.0, 1.0, 1.0, 0.0, 0.0],  # TRP
-    [1.0, 1.0, 1.0, 0.0, 0.0],  # TYR
-    [1.0, 1.0, 0.0, 0.0, 0.0],  # VAL
-]
+
 
 # Format: The list for each AA type contains chi1, chi2, chi3, chi4 in
 # this order (or a relevant subset from chi1 onwards). ALA and GLY don't have
@@ -387,6 +404,7 @@ chi_angles_atoms = {
     'TRP': [['N', 'CA', 'CB', 'CG'], ['CA', 'CB', 'CG', 'CD1']],
     'TYR': [['N', 'CA', 'CB', 'CG'], ['CA', 'CB', 'CG', 'CD1']],
     'VAL': [['N', 'CA', 'CB', 'CG1']],
+    'UNK': [],
 }
 
 # This mapping is used when we need to store atom data in a format that requires
@@ -430,7 +448,6 @@ atom_types = [
     "NZ",
     "OXT",
 ]
-
 atom_order = {atom_type: i for i, atom_type in enumerate(atom_types)}
 
 

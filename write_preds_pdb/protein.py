@@ -52,7 +52,8 @@ def to_pdb(prot: Protein) -> str:
     Returns:
       PDB string.
     """
-    restypes = constant.restypes + ["X"]
+   # restypes = constant.restypes + ["X"]
+    restypes = constant.restypes
     res_1to3 = lambda r: constant.restype_1to3.get(restypes[r], "UNK")
     atom_types = constant.atom_types
 

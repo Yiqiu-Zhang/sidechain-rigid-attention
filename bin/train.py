@@ -4,7 +4,7 @@ Training script.
 Example usage: python ~/protdiff/bin/train.py ~/protdiff/config_jsons/full_run_canonical_angles_only_zero_centered_1000_timesteps_reduced_len.json
 srun -p bio_s1 -n 1 --ntasks-per-node=1 --cpus-per-task=40 --gres=gpu:2 python train.py /mnt/petrelfs/lvying/code/sidechain-rigid-attention/config_jsons/cath_full_angles_cosine.json --dryrun
 squeue -p bio_s1
-sbatch -p bio_s1 --ntasks-per-node=1 --cpus-per-task=64 --gres=gpu:4  lvying_loss_L1.sh
+sbatch -p bio_s1 --nodelist=node1IP --ntasks-per-node=1 --cpus-per-task=64 --gres=gpu:4  lvying_loss_L1.sh
 """
 
 import os, sys
@@ -503,7 +503,7 @@ def train(
         log_every_n_steps=min(1, len(train_dataloader)),  # Log >= once per epoch
         accelerator=accelerator,
         strategy=strategy,
-        gpus=4,
+        gpus=3,
         enable_progress_bar=False,
         move_metrics_to_cpu=False,  # Saves memory
     )
@@ -603,10 +603,10 @@ def main():
             "subset": args.toy,
             "single_timestep_debug": args.debug_single_time,
             "cpu_only": args.cpu,
-            "ngpu": 6,
+            "ngpu": 3,
             "dryrun": args.dryrun,
         },
-    )
+    )    
     train(**config_args)
 
 
