@@ -229,9 +229,7 @@ class AngleDiffusionBase(nn.Module):
     }
     angular_loss_fn_dict = {
         "l1": losses.radian_l1_loss,
-        "smooth_l1": functools.partial(
-            losses.radian_smooth_l1_loss, beta=torch.pi / 10
-        ),
+        "smooth_l1": functools.partial(losses.radian_smooth_l1_loss, beta=torch.pi / 10),
         #========================new loss==============================
         "sin_cos": losses.square_chi_loss,
         "symmetric_sin_cos": losses.square_chi_loss_with_periodic,
@@ -401,7 +399,7 @@ class AngleDiffusionBase(nn.Module):
         self,
         side_chain_angles: torch.Tensor, #[batch,128,4]
         backbone_coords: torch.Tensor, #[batch,128,4,3]
-        seq_idx: torch.Tensor,#[batch,128,4]
+        seq_idx: torch.Tensor,#[batch,128,4] ?
         timestep: torch.Tensor, 
         rigid_mask: torch.Tensor,
         x_seq_esm: torch.Tensor,  #[batch,128,1024]

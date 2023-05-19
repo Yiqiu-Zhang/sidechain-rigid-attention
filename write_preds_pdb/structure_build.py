@@ -236,12 +236,15 @@ def torsion_to_frame(aatype_idx: torch.Tensor, # [*, N]
     # We create 3 dummy identity matrix for omega and other angles which is not used in the frame attention process
     sc_to_bb = rotate_sidechain(aatype_idx, angles_sin_cos)[..., [0,4,5,6,7]]
 
-    # [*, N] Rigid
+    # [*, N_res] Rigid
     bb_to_gb = geometry.get_gb_trans(backbone_position)
 
     all_frames_to_global = geometry.Rigid_mult(bb_to_gb[..., None], sc_to_bb)
 
-    return all_frames_to_global # return frame 
+    # [*, N_rigid]
+    flatten_frame = geometry.flatten_rigid(all_frames_to_global)
+
+    return flatten_frame # return frame
 
 def frame_to_edge(frames, # [*, N, 5]
                   aatype_idx # [*, N]
@@ -265,8 +268,7 @@ def frame_to_edge(frames, # [*, N, 5]
     flat_mask= torch.flatten(frame_mask, start_dim= -2) # mask
     # [*, Nx5, Nx5]
     frame_pair_mask = torch.bmm(flat_mask.unsqueeze(-1), flat_mask.unsqueeze(-2))
-    # [*, Nx5]
-    flatten_frame = geometry.flatten_rigid(frames)
+
 
     distance, altered_direction, orientation = flatten_frame.edge()
     altered_direction = altered_direction.type(torch.float64)
