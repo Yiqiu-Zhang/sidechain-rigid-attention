@@ -72,10 +72,10 @@ try:
         @torch.jit.unused
         def forward(self, x):
             if not x.is_cuda:
-                return super().forward(x)
+                return super().forward(x, )
             else:
                 with torch.cuda.device(x.device):
-                    return super().forward(x)
+                    return super().forward(x, )
 
 except ImportError:
     from torch.nn import LayerNorm as ESM1bLayerNorm

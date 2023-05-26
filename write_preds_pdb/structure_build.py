@@ -266,14 +266,15 @@ def frame_to_edge(frames, # [*, N, 5]
 
     # [*, Nx5]
     flat_mask= torch.flatten(frame_mask, start_dim= -2) # mask
-    # [*, Nx5, Nx5]
-    frame_pair_mask = torch.bmm(flat_mask.unsqueeze(-1), flat_mask.unsqueeze(-2))
+
+    # [*, Nx5, Nx5] 暂且不用
+    pair_mask = torch.bmm(flat_mask.unsqueeze(-1), flat_mask.unsqueeze(-2))
 
 
     distance, altered_direction, orientation = flatten_frame.edge()
     altered_direction = altered_direction.type(torch.float64)
     altered_direction = altered_direction.type(torch.float64)
-    return frame_pair_mask, distance, altered_direction, orientation
+    return pair_mask, flat_mask, distance, altered_direction, orientation
 
 '''
 result = {}
