@@ -85,8 +85,9 @@ class SinusoidalPositionEmbeddings(nn.Module):
     Positional embeddings
     """
 
-    def __init__(self, dim: int) -> None:
-        super().__init__()
+    def __init__(self, dim: int ) -> None:
+
+        super(SinusoidalPositionEmbeddings).__init__()
         self.dim = dim
 
     def forward(self, time: torch.Tensor) -> torch.Tensor:
@@ -285,7 +286,7 @@ class AngleDiffusionBase(nn.Module):
             max_seq_len,
             dropout,
         )
-        
+        d_z = 128
         # Set up the time embedder
         if time_encoding == "gaussian_fourier":
             self.time_embed = GaussianFourierProjection(d_model)
@@ -399,8 +400,8 @@ class AngleDiffusionBase(nn.Module):
         self,
         side_chain_angles: torch.Tensor, #[batch,128,4]
         backbone_coords: torch.Tensor, #[batch,128,4,3]
-        seq_idx: torch.Tensor,#[batch,128,4] ?
-        timestep: torch.Tensor, 
+        seq_idx: torch.Tensor,# [batch,128,4] ?
+        timestep: torch.Tensor, #[batch,1]
         rigid_mask: torch.Tensor,
         x_seq_esm: torch.Tensor,  #[batch,128,1024]
         x_rigid_type: torch.Tensor, #[batch,128,5,20] x_rigid_type[-1]=one hot
@@ -421,6 +422,7 @@ class AngleDiffusionBase(nn.Module):
         
         assert len(side_chain_angles.shape) == 3  # batch_size, seq_length, features
 
+        # [batch, 1, 384]
         time_encoded = self.time_embed(timestep.squeeze(dim=-1)).unsqueeze(1)
         output = self.encoder(side_chain_angles,
                               backbone_coords,

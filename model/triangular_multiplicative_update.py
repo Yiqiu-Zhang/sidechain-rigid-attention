@@ -57,16 +57,16 @@ class TriangleMultiplicativeUpdate(nn.Module):
         b: torch.Tensor,
         _inplace_chunk_size: Optional[int] = None
     ) -> torch.Tensor:
-        if(self._outgoing):
+        if self._outgoing:
             a = permute_final_dims(a, [2, 0, 1])
             b = permute_final_dims(b, [2, 1, 0])
         else:
-            a = permute_final_dims(a, [2, 1, 0])
-            b = permute_final_dims(b,  [2, 0, 1])
+            a = permute_final_dims(a, [2, 1, 0]) # [*, C_hidden, N_rigid(1), N_rigid(0)]
+            b = permute_final_dims(b,  [2, 0, 1])# [*, C_hidden, N_rigid, N_rigid]
 
         p = torch.matmul(a, b)
 
-        return permute_final_dims(p, [1, 2, 0])
+        return permute_final_dims(p, [1, 2, 0]) # [*, N_rigid, N_rigid, C_hidden]
 
     def forward(self, 
         z: torch.Tensor, 
@@ -74,16 +74,13 @@ class TriangleMultiplicativeUpdate(nn.Module):
     ) -> torch.Tensor:
         """
         Args:
-            x:
-                [*, N_res, N_res, C_z] input tensor
+            z:
+                [*, N_rigid, N_rigid, C_z] input tensor
             mask:
-                [*, N_res, N_res] input mask
+                [*, N_rigid, N_rigid] input mask
         Returns:
-            [*, N_res, N_res, C_z] output tensor
+            [*, N_rigid, N_rigid, C_z] output tensor
         """
-
-        if mask is None:
-            mask = z.new_ones(z.shape[:-1])
 
         mask = mask.unsqueeze(-1)
         

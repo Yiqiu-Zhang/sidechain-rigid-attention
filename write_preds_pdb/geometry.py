@@ -173,23 +173,19 @@ class Rigid:
 
     def edge(self):
 
-        '''
+        """
         Forming fully connected graph edge using the rigid object
-        Args:
-            rigid:
-
-        Returns:
-        '''
+        """
         rot_T = self.rot.transpose()
         rot = self.rot.get_rot_mat()
         orientation = torch.einsum('bmij,bnjk->bmnik', rot_T, rot)
 
-        displacement = self.trans[...,None,:] - self.trans[...,None,:,:]
+        displacement =  self.trans[...,None,:,:] - self.trans[...,None,:]
         distance = torch.linalg.vector_norm(displacement,dim=-1)
         direction = F.normalize(displacement,dim=-1)
-        altered_direction = torch.einsum('bmij,bmnj->bmnj',rot_T,direction)
+        altered_direction = torch.einsum('bmij,bmnj->bmni', rot_T, direction)
 
-        return distance,altered_direction,orientation
+        return distance, altered_direction, orientation
 
     def unsqueeze(self, dim: int) -> Rigid:
 
@@ -265,6 +261,27 @@ def rigid_mul_vec(rigid: Rigid,
     rotated = rot_vec(rot_mat, vec)
 
     return rotated + rigid.trans
+
+def invert_rot_mat(rot_mat: torch.Tensor):
+    return rot_mat.transpose(-1, -2)
+
+def invert_rot_mul_vec(rigid: Rigid,
+                         vec: torch.Tensor) -> torch.Tensor:
+    """
+        The inverse of the apply() method.
+
+        Args:
+            pts:
+                A [*, 3] set of points
+        Returns:
+            [*, 3] inverse-rotated points
+    """
+    rot_mats = rigid.rot.get_rot_mat()
+    inv_rot_mats = rot_mats.transpose(-1, -2)
+
+    rotated = rot_vec(inv_rot_mats, vec)
+
+    return rotated
 
 def rot_matmul(
     a: torch.Tensor,

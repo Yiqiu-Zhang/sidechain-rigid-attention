@@ -20,18 +20,18 @@ from typing import Optional, List
 import torch
 import torch.nn as nn
 
-from primitives import Linear, LayerNorm, Attention
-from utils import permute_final_dims, flatten_final_dims
+from primitives import LayerNorm, Attention
+from utils import permute_final_dims
 
 
 
 class TriangleAttention(nn.Module):
     def __init__(
-        self, c_in, c_hidden, no_heads, starting=True, inf=1e9
+        self, c_z, c_hidden, no_heads, starting=True, inf=1e9
     ):
         """
         Args:
-            c_in:
+            c_z:
                 Input channel dimension
             c_hidden:
                 Overall hidden channel dimension (not per-head)
@@ -40,56 +40,52 @@ class TriangleAttention(nn.Module):
         """
         super(TriangleAttention, self).__init__()
 
-        self.c_in = c_in
+        self.c_z = c_z
         self.c_hidden = c_hidden
         self.no_heads = no_heads
         self.starting = starting
         self.inf = inf
 
-        self.layer_norm = LayerNorm(self.c_in)
+        self.layer_norm = LayerNorm(self.c_z)
 
-        self.linear = Linear(c_in, self.no_heads, bias=False, init="normal")
+        self.linear = nn.Linear(self.c_z, self.no_heads, bias=False)
 
         self.mha = Attention(
-            self.c_in, self.c_in, self.c_in, self.c_hidden, self.no_heads
+            self.c_z, self.c_z, self.c_z, self.c_hidden, self.no_heads
         )
 
 
     def forward(self,
         x: torch.Tensor,
-        mask: Optional[torch.Tensor] = None
+        mask: torch.Tensor
     ) -> torch.Tensor:
         """
         Args:
             x:
-                [*, I, J, C_in] input tensor (e.g. the pair representation)
+                [*, N_rigid, N_rigid, c_z] input tensor (e.g. the pair representation)
         Returns:
-            [*, I, J, C_in] output tensor
+            [*, N_rigid, N_rigid, c_z] output tensor
         """ 
-        if mask is None:
-            # [*, I, J]
-            mask = x.new_ones(
-                x.shape[:-1],
-            )
 
         if not self.starting:
             x = x.transpose(-2, -3)
             mask = mask.transpose(-1, -2)
 
-        # [*, I, J, C_in]
+        # [*, N_rigid, N_rigid, c_z]
         x = self.layer_norm(x)
 
-        # [*, I, 1, 1, J]
+        # [*, N_rigid, 1, 1, N_rigid] 被 mask掉的 = -inf， 正常的 = 0
         mask_bias = (self.inf * (mask - 1))[..., :, None, None, :]
 
-        # [*, H, I, J]
-        triangle_bias = permute_final_dims(self.linear(x), (2, 0, 1))
+        # [*, c_z, N_rigid, N_rigid]
+        triangle_bias = permute_final_dims(self.linear(x), [2, 0, 1])
 
-        # [*, 1, H, I, J]
+        # [*, 1, c_z, N_rigid, N_rigid]
         triangle_bias = triangle_bias.unsqueeze(-4)
 
         biases = [mask_bias, triangle_bias]
 
+        # [*, N_rigid, N_rigid, c_z]
         x = self.mha(q_x=x, kv_x=x, biases=biases)
 
         if not self.starting:

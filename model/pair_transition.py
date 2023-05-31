@@ -60,7 +60,7 @@ class PairTransition(nn.Module):
 
     def forward(self, 
         z: torch.Tensor, 
-        mask: Optional[torch.Tensor] = None,
+        pair_mask: torch.Tensor,
     ) -> torch.Tensor:
         """
         Args:
@@ -69,13 +69,7 @@ class PairTransition(nn.Module):
         Returns:
             [*, N_res, N_res, C_z] pair embedding update
         """
-        # DISCREPANCY: DeepMind forgets to apply the mask in this module.
-        if mask is None:
-            mask = z.new_ones(z.shape[:-1])
 
-        # [*, N_res, N_res, 1]
-        mask = mask.unsqueeze(-1)
-
-        z = self._transition(z=z, mask=mask)
+        z = self._transition(z=z, mask=pair_mask.unsqueeze(-1))
 
         return z

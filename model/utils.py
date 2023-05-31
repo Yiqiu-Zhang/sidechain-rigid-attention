@@ -9,10 +9,10 @@ def ipa_point_weights_init_(weights):
         softplus_inverse_1 = 0.541324854612918
         weights.fill_(softplus_inverse_1)
 
-def permute_final_dims(tensor: torch.Tensor, inds: List[int]):
-    zero_index = -1 * len(inds)
+def permute_final_dims(tensor: torch.Tensor, idxs: List[int]):
+    zero_index = -1 * len(idxs)
     first_inds = list(range(len(tensor.shape[:zero_index])))
-    return tensor.permute(first_inds + [zero_index + i for i in inds])
+    return tensor.permute(first_inds + [zero_index + i for i in idxs])
 
 def flatten_final_dims(t: torch.Tensor, no_dims: int):
     return t.reshape(t.shape[:-no_dims] + (-1,))

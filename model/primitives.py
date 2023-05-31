@@ -12,22 +12,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from functools import partial
-import importlib
+
 import math
-from typing import Optional, Callable, List, Tuple, Sequence
+from typing import Optional, Callable, List, Tuple
 import numpy as np
 
 import torch
 import torch.nn as nn
 from scipy.stats import truncnorm
 
-
-from openfold.utils.tensor_utils import (
-    permute_final_dims,
-    flatten_final_dims,
-)
-
+from utils import permute_final_dims, flatten_final_dims
 
 DEFAULT_LMA_Q_CHUNK_SIZE=1024
 DEFAULT_LMA_KV_CHUNK_SIZE=4096
@@ -182,7 +176,6 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         d = x.dtype
 
-
         out = nn.functional.layer_norm(
             x,
             self.c_in,
@@ -208,11 +201,19 @@ def softmax_no_cast(t: torch.Tensor, dim: int = -1) -> torch.Tensor:
 
 
 #@torch.jit.script
-def _attention(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, biases: List[torch.Tensor]) -> torch.Tensor:
+def _attention(query: torch.Tensor, # [*, N_rigid, H, N_rigid, C_hidden]
+               key: torch.Tensor,
+               value: torch.Tensor,
+               biases: List[torch.Tensor] # [[*, N_rigid, 1, 1, N_rigid],
+                                          #  [*, 1, c_z, N_rigid, N_rigid]]
+               ) -> torch.Tensor:
+
     # [*, H, C_hidden, K]
-    key = permute_final_dims(key, (1, 0))
+    # [*, N_rigid, H, C_hidden, N_rigid]
+    key = permute_final_dims(key, [1, 0])
 
     # [*, H, Q, K]
+    # [*, N_rigid, H, N_rigid, N_rigid]
     a = torch.matmul(query, key)
 
     for b in biases:
@@ -221,6 +222,7 @@ def _attention(query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, bias
     a = softmax_no_cast(a, -1)
 
     # [*, H, Q, C_hidden]
+    # [*, N_rigid, H, N_rigid, C_hidden]
     a = torch.matmul(a, value)
 
     return a
@@ -289,22 +291,22 @@ class Attention(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def _prep_qkv(self,
-        q_x: torch.Tensor, 
-        kv_x: torch.Tensor
+        q_x: torch.Tensor,  # [*, N_rigid, N_rigid, c_z]
+        kv_x: torch.Tensor  # [*, N_rigid, N_rigid, c_z]
     ) -> Tuple[
         torch.Tensor, torch.Tensor, torch.Tensor
     ]:
-        # [*, Q/K/V, H * C_hidden]
+        # [*, N_rigid, N_rigid, H * C_hidden]
         q = self.linear_q(q_x)
         k = self.linear_k(kv_x)
         v = self.linear_v(kv_x)
 
-        # [*, Q/K, H, C_hidden]
+        # [*, N_rigid, N_rigid, H, C_hidden]
         q = q.view(q.shape[:-1] + (self.no_heads, -1))
         k = k.view(k.shape[:-1] + (self.no_heads, -1))
         v = v.view(v.shape[:-1] + (self.no_heads, -1))
 
-        # [*, H, Q/K, C_hidden]
+        # [*, H, Q/K, C_hidden] [*, N_rigid, H, N_rigid, C_hidden]
         q = q.transpose(-2, -3)
         k = k.transpose(-2, -3)
         v = v.transpose(-2, -3)
@@ -314,13 +316,15 @@ class Attention(nn.Module):
         return q, k, v
 
     def _wrap_up(self,
-        o: torch.Tensor, 
-        q_x: torch.Tensor
+        o: torch.Tensor, # [*, N_rigid, N_rigid, H, C_hidden]
+        q_x: torch.Tensor # [*, N_rigid, N_rigid, c_z]
     ) -> torch.Tensor:
         if self.linear_g is not None:
+            # [*, N_rigid, N_rigid, H*C_hidden]
             g = self.sigmoid(self.linear_g(q_x))
         
             # [*, Q, H, C_hidden]
+            # [*, N_rigid, N_rigid, H, C_hidden]
             g = g.view(g.shape[:-1] + (self.no_heads, -1))
             o = o * g
 
@@ -353,13 +357,14 @@ class Attention(nn.Module):
         if biases is None:
             biases = []
         
-        # [*, H, Q/K, C_hidden]
+        # [*, N_rigid, H, N_rigid, C_hidden]
         q, k, v = self._prep_qkv(q_x, kv_x)
 
         # [*, Q, H, C_hidden]
-        o = _attention(q, k, v, biases)
-        o = o.transpose(-2, -3)
+        o = _attention(q, k, v, biases) # [*, N_rigid, H, N_rigid, C_hidden]
+        o = o.transpose(-2, -3)# [*, N_rigid, N_rigid, H, C_hidden]
 
+        # [*, N_rigid, N_rigid, c_z]
         o = self._wrap_up(o, q_x)
 
         return o

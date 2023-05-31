@@ -6,7 +6,7 @@ from typing import Optional
 from triangular_attention import TriangleAttentionStartingNode, TriangleAttentionEndingNode
 from triangular_multiplicative_update import TriangleMultiplicationOutgoing, TriangleMultiplicationIncoming
 from pair_transition import PairTransition
-from primitives import LayerNorm, Linear, Attention
+from primitives import LayerNorm
 
 class PairStackBlock(nn.Module):
     def __init__(
@@ -59,34 +59,29 @@ class PairStackBlock(nn.Module):
 
     def forward(self,
                 z: torch.Tensor,
-                mask: torch.Tensor,
+                pair_mask: torch.Tensor,
                 _mask_trans: bool = True,
                 ):
+        # [*, N_rigid, N_rigid, c_z]
+        z = z + self.tri_att_start(z, mask=pair_mask)
 
-        z_mask = mask
+        z = z + self.tri_att_end(z, mask=pair_mask)
 
-        z = z + self.tri_att_start(z, mask=z_mask)
-
-
-        z = z + self.tri_att_end(z, mask=z_mask)
-
-
-        tmu_update = self.tri_mul_out(z, mask=z_mask)
+        tmu_update = self.tri_mul_out(z, mask=pair_mask)
 
         z = z + tmu_update
 
         del tmu_update
 
-        tmu_update = self.tri_mul_in(z, mask=z_mask)
+        tmu_update = self.tri_mul_in(z, mask=pair_mask)
 
         z = z + tmu_update
 
         del tmu_update
 
-        z = z + self.pair_transition(z,mask=z_mask if _mask_trans else None)
+        z = z + self.pair_transition(z,mask=pair_mask if _mask_trans else None)
 
         return z
-
 
 class PairStack(nn.Module):
     """
@@ -139,16 +134,12 @@ class PairStack(nn.Module):
         """
         Args:
             t:
-                [*, N_templ, N_res, N_res, c_z] template embedding
+                [*,  N_rigid, N_rigid, c_z] template embedding
             mask:
-                [*, N_templ, N_res, N_res] mask
+                [*,  N_rigid, N_rigid] mask
         Returns:
-            [*, N_templ, N_res, N_res, c_z] template embedding update
+            [*,  N_rigid, N_rigid, c_z] template embedding update
         """
-        if mask.shape[-3] == 1:
-            expand_idx = list(mask.shape)
-            expand_idx[-3] = pair_emb.shape[-4]
-            mask = mask.expand(*expand_idx)
 
         for pair_block in  self.blocks:
             pair_emb = pair_block(pair_emb, mask = mask, _mask_trans = _mask_trans)
@@ -191,21 +182,22 @@ class PairEmbedder(nn.Module):
                                     pair_transition_n)
 
         # Despite there being no relu nearby, the source uses that initializer
-        self.linear = nn.Linear(pair_dim, c_z, init="relu")
+        self.linear = nn.Linear(pair_dim, c_z)
+
 
     def forward(
         self,
         pair_feature: torch.Tensor,
-        mask: torch.Tensor,
+        pair_mask: torch.Tensor,
+        pair_time: torch.Tensor, # [bathc, N_rigid, N_rigid, c_z]
+        relative_pos: torch.Tensor,
+        nf_pair_emb: torch.Tensor,
     ) -> torch.Tensor:
-        """
-        Args:
-            x:
-            [*, C_in] input tensor
-        Returns:
-            [*, C_out] output tensor
-        """
-        pair_emb = self.linear(pair_feature)
-        pair_emb = self.pair_stack(pair_emb, mask)
 
-        return x
+
+        pair_emb = self.linear(pair_feature)
+        pair_emb = pair_emb + pair_time + relative_pos + nf_pair_emb
+
+        pair_emb = self.pair_stack(pair_emb, pair_mask)
+
+        return pair_emb
