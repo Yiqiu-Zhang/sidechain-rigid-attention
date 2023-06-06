@@ -22,18 +22,11 @@ seaborn.set_context(context="talk")
 class Ridig_Embeddings(nn.Module):
     def __init__(self, d_model, d_esm_seq, n_rigid_type, n_rigid_property):
         super(Ridig_Embeddings, self).__init__()
-       # self.embed_rigid_type = nn.Embedding(n_rigid_type, d_model)
-       # self.embed_rigid_property = nn.Embedding(n_rigid_property, d_model)
+
         self.embed_rigid_type = nn.Linear(n_rigid_type, d_model, dtype=torch.float64)
         self.embed_rigid_property = nn.Linear(n_rigid_property, d_model, dtype=torch.float64)
-        self.seq2d = nn.Linear(d_esm_seq, d_model) 
+       # self.seq2d = nn.Linear(d_esm_seq, d_model) 
         self.mlp2d = nn.Linear(d_model+d_model+d_model+d_model, d_model, dtype=torch.float64)
-                
-       # self.mlp2d = nn.Sequential(
-       #           nn.Linear(d_model+d_model+d_model, d_model//2, dtype=torch.float64),
-       #           nn.ReLU(),
-       #           nn.Linear(d_model//2, d_model, dtype=torch.float64)
-       # )
         self.embed_rigid_idx =  nn.Linear(5, d_model, dtype=torch.float64)
 
     def forward(
@@ -49,8 +42,8 @@ class Ridig_Embeddings(nn.Module):
         x_rigid_idx = F.one_hot(rigid_idx, num_classes=5)
         x_rigid_idx = x_rigid_idx.double().to('cuda')
         x_embed_rigid_idx = self.embed_rigid_idx(x_rigid_idx)
-        x_seq = self.seq2d(x_seq_esm) #[batch, L, 512]
-        x_seq = x_seq.unsqueeze(-2)
+        #x_seq = self.seq2d(x_seq_esm) #[batch, L, 512]
+        x_seq = x_seq_esm.unsqueeze(-2)
         input = torch.cat([x_embed_rigid_type, x_embed_rigid_proterty,  x_seq.repeat(1, 1, 5, 1), x_embed_rigid_idx], dim=-1)  #[batch, L, 5, 128*3]
         input_embed = self.mlp2d(input) #[batch, L, 4, 128]
         return input_embed
@@ -464,7 +457,8 @@ class Ridge_Transformer(nn.Module):
         self.predict_angles = AnglesPredictor(d_model*5, d_angles)
         self.predict_noise = NoisePredictor(d_model*5,d_angles)
         self.norm = nn.LayerNorm(d_model, dtype=torch.float64)
-
+        self.angleT = nn.Linear(d_angles, d_model, dtype=torch.float64)
+       
     def forward(self,
         side_chain_angles: torch.Tensor, #[batch,128,4]
         backbone_coords: torch.Tensor, #[batch,128,4,3]
@@ -474,9 +468,12 @@ class Ridge_Transformer(nn.Module):
         x_seq_esm: torch.Tensor,  #[batch,128,1024]
         x_rigid_type: torch.Tensor, #[batch,128,5,19] x_rigid_type[-1]=one hot
         x_rigid_proterty: torch.Tensor, #[batch,128,5,6]
-    ):
+    ):   
+        
      #   print("========rigid transformer start=========")
-        x_rigid = self.embedding(x_seq_esm, x_rigid_type, x_rigid_proterty) # [batch,128,5,384]
+        noise_angles = self.angleT(side_chain_angles) #[batch,128,384]
+        noise_angles = noise_angles+time_encoded
+        x_rigid = self.embedding(noise_angles, x_rigid_type, x_rigid_proterty) # [batch,128,5,384]
      #   print("======== x_rigid  embedding=========")
 
 
@@ -487,7 +484,7 @@ class Ridge_Transformer(nn.Module):
         x_rigid_11  = x_rigid.reshape(x_rigid.shape[0], x_rigid.shape[-2]//5, 5, x_rigid.shape[-1])
         x_rigid_22 = x_rigid.reshape(x_rigid_11.shape[0], x_rigid_11.shape[-3], -1)  
         x_rigid_init = x_rigid_22
-        x_rigid = x_rigid+time_encoded
+       # x_rigid = x_rigid+time_encoded
         for layer in self.layers:
             rigid_by_residue = structure_build.torsion_to_frame(aatype_idx, backbone_coords, side_chain_angles) # add attention #frame 
             frame_pair_mask, distance, altered_direction, orientation = structure_build.frame_to_edge(rigid_by_residue, aatype_idx)
@@ -504,6 +501,4 @@ class Ridge_Transformer(nn.Module):
         noise = self.predict_noise(x_rigid_2,x_rigid_init)
         return noise
     
-        #self.angleT = nn.Linear(d_angles, d_model, dtype=torch.float64)
-        #noise_angles = self.angleT(side_chain_angles) #[batch,128,384]
-        #noise_angles = noise_angles+time_encoded
+     

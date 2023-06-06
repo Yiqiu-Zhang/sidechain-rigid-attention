@@ -183,7 +183,7 @@ class Rigid:
         displacement =  self.trans[...,None,:,:] - self.trans[...,None,:]
         distance = torch.linalg.vector_norm(displacement,dim=-1)
         direction = F.normalize(displacement,dim=-1)
-        altered_direction = torch.einsum('bmij,bmnj->bmni', rot_T, direction)
+        altered_direction = torch.einsum('bmij,bmnj->bmni', rot_T.double(), direction.double())
 
         return distance, altered_direction, orientation
 

@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 from scipy.stats import truncnorm
 
-from utils import permute_final_dims, flatten_final_dims
+from model.utils1 import permute_final_dims, flatten_final_dims
 
 DEFAULT_LMA_Q_CHUNK_SIZE=1024
 DEFAULT_LMA_KV_CHUNK_SIZE=4096
@@ -94,7 +94,7 @@ def ipa_point_weights_init_(weights):
         softplus_inverse_1 = 0.541324854612918
         weights.fill_(softplus_inverse_1)
 
-
+'''
 class Linear(nn.Linear):
     """
     A Linear layer with built-in nonstandard initializations. Called just
@@ -161,7 +161,7 @@ class Linear(nn.Linear):
                     final_init_(self.weight)
                 else:
                     raise ValueError("Invalid init string.")
-
+'''
 
 class LayerNorm(nn.Module):
     def __init__(self, c_in, eps=1e-5):
@@ -215,9 +215,11 @@ def _attention(query: torch.Tensor, # [*, N_rigid, H, N_rigid, C_hidden]
     # [*, H, Q, K]
     # [*, N_rigid, H, N_rigid, N_rigid]
     a = torch.matmul(query, key)
-
+    #print("==========a===========",a.device)
     for b in biases:
-        a += b
+     #   print("==========b===========",b.device)
+        
+        a += b.to('cuda')
 
     a = softmax_no_cast(a, -1)
 
@@ -269,23 +271,23 @@ class Attention(nn.Module):
         # DISCREPANCY: c_hidden is not the per-head channel dimension, as
         # stated in the supplement, but the overall channel dimension.
 
-        self.linear_q = Linear(
-            self.c_q, self.c_hidden * self.no_heads, bias=False, init="glorot"
+        self.linear_q = nn.Linear(
+            self.c_q, self.c_hidden * self.no_heads, bias=False
         )
-        self.linear_k = Linear(
-            self.c_k, self.c_hidden * self.no_heads, bias=False, init="glorot"
+        self.linear_k = nn.Linear(
+            self.c_k, self.c_hidden * self.no_heads, bias=False
         )
-        self.linear_v = Linear(
-            self.c_v, self.c_hidden * self.no_heads, bias=False, init="glorot"
+        self.linear_v = nn.Linear(
+            self.c_v, self.c_hidden * self.no_heads, bias=False
         )
-        self.linear_o = Linear(
-            self.c_hidden * self.no_heads, self.c_q, init="final"
+        self.linear_o = nn.Linear(
+            self.c_hidden * self.no_heads, self.c_q
         )
 
         self.linear_g = None
         if self.gating:
-            self.linear_g = Linear(
-                self.c_q, self.c_hidden * self.no_heads, init="gating"
+            self.linear_g = nn.Linear(
+                self.c_q, self.c_hidden * self.no_heads
             )
 
         self.sigmoid = nn.Sigmoid()

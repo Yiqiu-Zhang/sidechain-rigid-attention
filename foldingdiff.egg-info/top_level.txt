@@ -1,5 +1,6 @@
 foldingdiff
 graph_transformer
+model
 rigid_attention
 tests
 write_preds_pdb

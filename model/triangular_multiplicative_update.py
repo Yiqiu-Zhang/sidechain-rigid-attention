@@ -19,8 +19,8 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from model.primitives import Linear, LayerNorm
-from utils import permute_final_dims
+from model.primitives import LayerNorm
+from model.utils1 import permute_final_dims
 from model.precision_utilis import is_fp16_enabled
 
 class TriangleMultiplicativeUpdate(nn.Module):
@@ -40,12 +40,12 @@ class TriangleMultiplicativeUpdate(nn.Module):
         self.c_hidden = c_hidden
         self._outgoing = _outgoing
 
-        self.linear_a_p = Linear(self.c_z, self.c_hidden)
-        self.linear_a_g = Linear(self.c_z, self.c_hidden, init="gating")
-        self.linear_b_p = Linear(self.c_z, self.c_hidden)
-        self.linear_b_g = Linear(self.c_z, self.c_hidden, init="gating")
-        self.linear_g = Linear(self.c_z, self.c_z, init="gating")
-        self.linear_z = Linear(self.c_hidden, self.c_z, init="final")
+        self.linear_a_p = nn.Linear(self.c_z, self.c_hidden)
+        self.linear_a_g = nn.Linear(self.c_z, self.c_hidden)
+        self.linear_b_p = nn.Linear(self.c_z, self.c_hidden)
+        self.linear_b_g = nn.Linear(self.c_z, self.c_hidden)
+        self.linear_g = nn.Linear(self.c_z, self.c_z)
+        self.linear_z = nn.Linear(self.c_hidden, self.c_z)
 
         self.layer_norm_in = LayerNorm(self.c_z)
         self.layer_norm_out = LayerNorm(self.c_hidden)
@@ -86,11 +86,11 @@ class TriangleMultiplicativeUpdate(nn.Module):
         
         z = self.layer_norm_in(z)
         a = mask
-        a = a * self.sigmoid(self.linear_a_g(z)) 
-        a = a * self.linear_a_p(z)
+        a = a.to('cuda') * self.sigmoid(self.linear_a_g(z)) 
+        a = a.to('cuda') * self.linear_a_p(z)
         b = mask
-        b = b * self.sigmoid(self.linear_b_g(z))
-        b = b * self.linear_b_p(z)
+        b = b.to('cuda') * self.sigmoid(self.linear_b_g(z))
+        b = b.to('cuda') * self.linear_b_p(z)
         
         if is_fp16_enabled():
             with torch.cuda.amp.autocast(enabled=False):

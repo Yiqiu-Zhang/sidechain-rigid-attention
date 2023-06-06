@@ -32,7 +32,8 @@ def test_esm_if1():
         )
         prev_output_tokens = tokens[:, :-1]
         target = tokens[:, 1:]
-        logits, _ = model.forward(coords, padding_mask)
+        logits, _ = model.forward(coords, padding_mask, confidence,
+                prev_output_tokens)
         loss = torch.nn.functional.cross_entropy(logits, target, reduction='none')
         coord_mask = torch.all(torch.all(torch.isfinite(coords), dim=-1), dim=-1)
         coord_mask = coord_mask[:, 1:-1]
@@ -53,14 +54,16 @@ def test_esm_if1():
             )
             prev_output_tokens = tokens[:, :-1]
             target = tokens[:, 1:]
-            logits, _ = model.forward(coords, padding_mask)
+            logits, _ = model.forward(coords, padding_mask, confidence,
+                    prev_output_tokens)
             assert torch.any(torch.isnan(logits)) == False
 
             # Test equivariance
             R = special_ortho_group.rvs(3)
             R = torch.tensor(R, dtype=torch.float32)
             coords = torch.matmul(coords, R)
-            logits_rotated, _ = model.forward(coords, padding_mask)
+            logits_rotated, _ = model.forward(coords, padding_mask,
+                    confidence, prev_output_tokens)
             np.testing.assert_allclose(
                     logits.detach().numpy(), 
                     logits_rotated.detach().numpy(), 

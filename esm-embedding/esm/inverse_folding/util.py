@@ -113,7 +113,7 @@ def get_sequence_loss(model, alphabet, coords, seq):
     prev_output_tokens = tokens[:, :-1]
     target = tokens[:, 1:]
     target_padding_mask = (target == alphabet.padding_idx)
-    logits, _ = model.forward(coords, padding_mask)
+    logits, _ = model.forward(coords, padding_mask, confidence, prev_output_tokens)
     loss = F.cross_entropy(logits, target, reduction='none')
     loss = loss[0].detach().numpy()
     target_padding_mask = target_padding_mask[0].numpy()
@@ -134,7 +134,8 @@ def get_encoder_output(model, alphabet, coords):
     # the batch_converter is essential for forming the correct input format
     batch = [(coords, None, None)]
     coords, confidence, _, _, padding_mask = batch_converter(batch)
-    encoder_out = model.encoder.forward(coords, padding_mask)
+    encoder_out = model.encoder.forward(coords, padding_mask, confidence,
+            return_all_hiddens=False)
     # remove beginning and end (bos and eos tokens)
     return encoder_out['encoder_out'][0][1:-1, 0]
 

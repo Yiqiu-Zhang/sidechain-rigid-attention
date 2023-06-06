@@ -17,7 +17,7 @@ device1 = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 def rotate_sidechain(
                     restype_idx:torch.Tensor, # [*, N]
-                    angles: torch.Tensor # [*,N,4]
+                    angles: torch.Tensor # [*,N,4，2]
                     ) -> geometry.Rigid:
 
     # [21, 8, 4, 4]
@@ -38,8 +38,16 @@ def rotate_sidechain(
     # [*,N,4] + [*,N,4] == [*,N,8]
     # adding 4 zero angles which means no change to the default value.
     #=============================训练时.to('cuda')保留，解开注释===================================================#
+    print("=============sin_angles==============",sin_angles.shape)
+    print("=============cos_angles==============",cos_angles.shape)
+    print("=============torch.zeros(*restype_idx.shape, 4)==============",torch.zeros(*restype_idx.shape, 4).shape)
+    print("=============torch.ones(*restype_idx.shape, 4)==============",torch.ones(*restype_idx.shape, 4).shape)
+    
     sin_angles = torch.cat([torch.zeros(*restype_idx.shape, 4).to('cuda'), sin_angles.to('cuda')],dim=-1)
     cos_angles = torch.cat([torch.ones(*restype_idx.shape, 4).to('cuda'), cos_angles.to('cuda')],dim=-1)
+    print("=============sin_angles==============",sin_angles.shape)
+    print("=============cos_angles==============",cos_angles.shape)
+
     #=============================训练时.to('cuda')保留，解开注释===================================================#
 
     
@@ -216,7 +224,7 @@ def torsion_to_position(aatype_idx: torch.Tensor, # [*, N]
 
 def torsion_to_frame(aatype_idx: torch.Tensor, # [*, N]
                     backbone_position: torch.Tensor, # [*, N, 4, 3] (N, CA, C, O)
-                    angles: torch.Tensor, # [*, N, 4] (X1, X2, X3, X4)
+                    angles_sin_cos: torch.Tensor, # [*, N, 4, 2] (X1, X2, X3, X4)
                     ): # -> [*, N, 5] Rigid
     """Compute all residue frames given torsion
         angles and the fixed backbone coordinates.
@@ -229,8 +237,6 @@ def torsion_to_frame(aatype_idx: torch.Tensor, # [*, N]
         return:
             all frames [N, 5] Rigid
         """
-
-    angles_sin_cos = torch.stack([torch.sin(angles), torch.cos(angles)], dim=-1)
 
     # side chain frames [*, N, 5] Rigid
     # We create 3 dummy identity matrix for omega and other angles which is not used in the frame attention process
@@ -247,7 +253,8 @@ def torsion_to_frame(aatype_idx: torch.Tensor, # [*, N]
     return flatten_frame # return frame
 
 def frame_to_edge(frames: geometry.Rigid, # [*, N_rigid] Rigid
-                  aatype_idx # [*, N]
+                  aatype_idx, # [*, N_res]
+                  pad_mask # [*, N_res]
                   ):
     '''
     compute edge information between two frames distance, direction, orientation
@@ -260,10 +267,12 @@ def frame_to_edge(frames: geometry.Rigid, # [*, N_rigid] Rigid
 
     # [20, 5]
     restype_frame5_mask = torch.tensor(restype_frame_mask)
-
+    print("=========restype_frame5_mask =============",restype_frame5_mask.device)
+    print("=========pad_mask=============",pad_mask.device)
     # [*, N_res, 5]
-    frame_mask = restype_frame5_mask[aatype_idx, ...] 
-
+    frame_mask = restype_frame5_mask[aatype_idx, ...].to('cuda')
+    frame_mask = frame_mask * pad_mask[..., None]
+    
     # [*, N_rigid]
     flat_mask= torch.flatten(frame_mask, start_dim= -2)
 
@@ -272,9 +281,9 @@ def frame_to_edge(frames: geometry.Rigid, # [*, N_rigid] Rigid
     # [*, N_rigid, N_rigid]
     distance, altered_direction, orientation = frames.edge()
     # [*, N_rigid, N_rigid, 3]
-    altered_direction = altered_direction.type(torch.float64)
+  #  altered_direction = altered_direction.type(torch.float64)
     # [*, N_rigid, N_rigid, 3, 3]
-    orientation = orientation.type(torch.float64)
+  #  orientation = orientation.type(torch.float64)
 
     return pair_mask, flat_mask, distance, altered_direction, orientation
 

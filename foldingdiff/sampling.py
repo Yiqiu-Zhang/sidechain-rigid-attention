@@ -212,7 +212,7 @@ def sample(
         rigid_property = temp_rp.repeat(batch,1,1,1).cuda()
 
         noise = train_dset.sample_noise(
-             torch.zeros((batch, seq.shape[-1], model.n_inputs), dtype=torch.float32)
+             torch.zeros((batch, seq.shape[-1], model.n_inputs), dtype=torch.float64)
         )
         # Produces (timesteps, batch_size, seq_len, n_ft)
         this_lengths =  [seq.shape[-1], seq.shape[-1], seq.shape[-1], seq.shape[-1],seq.shape[-1], seq.shape[-1], seq.shape[-1], seq.shape[-1],seq.shape[-1], seq.shape[-1]]

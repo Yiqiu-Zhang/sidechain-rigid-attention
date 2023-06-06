@@ -10,7 +10,7 @@ from write_preds_pdb.geometry import Rigid, rigid_mul_vec, invert_rot_mul_vec
 
 from pair_embedding import PairEmbedder
 from utils import permute_final_dims, flatten_final_dims, ipa_point_weights_init_, rbf, quaternions
-from primitives import LayerNorm #这里可能有点bug， 我们的 nn.Linear 没有规定初始化
+from primitives import LayerNorm
 
 def get_timestep_embedding(timesteps, embedding_dim, max_positions=10000):
     # Code from https://github.com/hojonathanho/diffusion/blob/master/diffusion_tf/nn.py
@@ -127,9 +127,8 @@ class InputEmbedder(nn.Module):
         d = torch.abs(d)
         d = torch.argmin(d, dim=-1)
         d = nn.functional.one_hot(d, num_classes=len(boundaries)).float()
-        d = d.to(rigid_res_idx.dtype)
         l = len(d.shape)
-        d = d.unsqueze(0).repeat(batch_size,*(1,)*l) #  [B, N_rigid, N_rigid, C_pair]
+        d = d.unsqueeze(0).repeat(batch_size,*(1,)*l) #  [B, N_rigid, N_rigid, C_pair]
         return self.linear_relpos(d) # [B, N_rigid, N_rigid, C_pair]
 
     def forward(self,
@@ -163,13 +162,13 @@ class InputEmbedder(nn.Module):
         expand_angle = sin_cos.repeat(1,1,5).reshape(batch_size, -1, sin_cos.shape[-1])
 
         # 直接把 time emb 成 c_n, c_z 两个维度 分别 + 到 node_emb 还有 pair_emb
-        node_time = torch.tile(get_timestep_embedding(timesteps, self.c_n)[:, None, :], (1, n_rigid, 1))
-        pair_time = torch.tile(get_timestep_embedding(timesteps, self.c_z)[:, None, :], (1, n_rigid, 1))
+        node_time = torch.tile(get_timestep_embedding(timesteps.squeeze(-1), self.c_n)[:, None, :], (1, n_rigid, 1))
+        pair_time = torch.tile(get_timestep_embedding(timesteps.squeeze(-1), self.c_z)[:, None, None, :], (1, n_rigid, n_rigid, 1))
 
         """ 目前我们直接把 Angle 拼上去 然后做一个linear，后期可以尝试把 angle 单独拿出来 
         做一个linear，relu，linear 然后再拼回去试一下"""
         # [batch, N_rigid, nf_dim]
-        node_feature = torch.cat((flat_rigid_type, flat_rigid_property, expand_seq, expand_angle), dim=-1)
+        node_feature = torch.cat((flat_rigid_type, flat_rigid_property, expand_seq, expand_angle), dim=-1).float()
 
         # [*, N_rigid, c_n]
         node_emb = self.linear_tf_n(node_feature)
@@ -177,14 +176,14 @@ class InputEmbedder(nn.Module):
         # add time encode
         node_emb = node_emb + node_time
 
-        node_emb = node_emb * rigid_mask
+        node_emb = node_emb * rigid_mask[...,None]
 
         ################ Pair_feature ####################
 
         # [batch, N_rigid, N_rigid, C_x] C_x = 23?
         distance_rbf = rbf(distance)
         orientation_quaternions = quaternions(orientation)
-        pair_feature = torch.cat((distance_rbf, altered_direction, orientation_quaternions),dim=-1)
+        pair_feature = torch.cat((distance_rbf, altered_direction, orientation_quaternions),dim=-1).float()
 
         nf_emb_i = self.linear_tf_z_i(node_feature)
         nf_emb_j = self.linear_tf_z_j(node_feature)
@@ -243,7 +242,7 @@ class InvariantPointAttention(nn.Module):
         concat_out_dim = self.no_heads * (
             self.c_z + self.c_hidden + self.no_v_points * 4
         )
-        self.linear_out = nn.Linear(concat_out_dim, self.c_n, init="final")
+        self.linear_out = nn.Linear(concat_out_dim, self.c_n)
 
         self.softmax = nn.Softmax(dim=-1)
         self.softplus = nn.Softplus()
@@ -447,7 +446,6 @@ class TransitionLayer(nn.Module):
 class EdgeTransition(nn.Module):
     def __init__(
             self,
-            *,
             node_embed_size,
             edge_embed_in,
             edge_embed_out,
@@ -458,14 +456,14 @@ class EdgeTransition(nn.Module):
 
         bias_embed_size = node_embed_size // node_dilation
         self.initial_embed = nn.Linear(
-            node_embed_size, bias_embed_size, init="relu")
+            node_embed_size, bias_embed_size)
         hidden_size = bias_embed_size * 2 + edge_embed_in
         trunk_layers = []
         for _ in range(num_layers):
-            trunk_layers.append(nn.Linear(hidden_size, hidden_size, init="relu"))
+            trunk_layers.append(nn.Linear(hidden_size, hidden_size))
             trunk_layers.append(nn.ReLU())
         self.trunk = nn.Sequential(*trunk_layers)
-        self.final_layer = nn.Linear(hidden_size, edge_embed_out, init="final")
+        self.final_layer = nn.Linear(hidden_size, edge_embed_out)
         self.layer_norm = nn.LayerNorm(edge_embed_out)
 
     def forward(self, node_emb, edge_emb):
@@ -513,7 +511,7 @@ class AngleResnet(nn.Module):
         """
         super(AngleResnet, self).__init__()
 
-        self.c_in = c_in * no_rigids
+        self.c_in = c_in
         self.no_rigids = no_rigids
         self.c_hidden = c_hidden
         self.no_blocks = no_blocks
@@ -553,8 +551,8 @@ class AngleResnet(nn.Module):
 
         # [*, N_res, c_n * no_rigid]
         # 这里把不同 rigid 的信息拼起来在这里
-        s_initial = s_initial.reshape(s_initial.shape[:-2], -1, s_initial.shape[-1] * self.no_rigids)
-        s = s.reshape(s.shape[:-2], -1, s.shape[-1] * self.no_rigids)
+        s_initial = s_initial.reshape(s_initial.shape[0], -1, s_initial.shape[-1] * self.no_rigids)
+        s = s.reshape(s.shape[0], -1, s.shape[-1] * self.no_rigids)
 
         # [*, N_res, C_hidden]
         s_initial = self.relu(s_initial)
@@ -574,10 +572,88 @@ class AngleResnet(nn.Module):
         # [*, N_res, no_angles, 2]
         s = s.view(s.shape[:-1] + (-1, 2))
 
+        # sin2 + cos2 = 1 这样让取值 变成 sin cos
         norm_denom = torch.sqrt(
             torch.clamp(torch.sum(s ** 2, dim=-1, keepdim=True),min=self.eps,)
         )
         s = s / norm_denom
+
+        return s
+
+class AngleNoise(nn.Module):
+
+    def __init__(self, c_in, c_hidden, no_blocks, no_angles, no_rigids, epsilon):
+        """
+        Args:
+            c_in:
+                Input channel dimension
+            c_hidden:
+                Hidden channel dimension
+            no_blocks:
+                Number of resnet blocks
+            no_angles:
+                Number of torsion angles to generate
+            epsilon:
+                Small constant for normalization
+        """
+
+        super(AngleNoise, self).__init__()
+
+        self.c_in = c_in
+        self.no_rigids = no_rigids
+        self.c_hidden = c_hidden
+        self.no_blocks = no_blocks
+        self.no_angles = no_angles
+        self.eps = epsilon
+
+        self.linear_in = nn.Linear(self.c_in * self.no_rigids, self.c_hidden)
+        self.linear_initial = nn.Linear(self.c_in * self.no_rigids, self.c_hidden)
+
+        self.layers = nn.ModuleList()
+        for _ in range(self.no_blocks):
+            layer = AngleResnetBlock(c_hidden=self.c_hidden)
+            self.layers.append(layer)
+
+        self.linear_out = nn.Linear(self.c_hidden, self.no_angles)
+
+        self.relu = nn.ReLU()
+
+    def forward(
+            self, s: torch.Tensor, s_initial: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Args:
+            s:
+                [*, N_rigid, c_n] single embedding
+            s_initial:
+                [*, N_rigid, c_n] single embedding as of the start of the
+                StructureModule
+        Returns:
+            [*, no_angles] predicted angles
+        """
+        # NOTE: The ReLU's applied to the inputs are absent from the supplement
+        # pseudocode but present in the source. For maximal compatibility with
+        # the pretrained weights, I'm going with the source.
+
+        # [*, N_res, c_n * no_rigid]
+        # 这里把不同 rigid 的信息拼起来在这里
+        s_initial = s_initial.reshape(s_initial.shape[0], -1, s_initial.shape[-1] * self.no_rigids)
+        s = s.reshape(s.shape[0], -1, s.shape[-1] * self.no_rigids)
+
+        # [*, N_res, C_hidden]
+        s_initial = self.relu(s_initial)
+        s_initial = self.linear_initial(s_initial)
+        s = self.relu(s)
+        s = self.linear_in(s)
+        s = s + s_initial
+
+        for l in self.layers:
+            s = l(s)
+
+        s = self.relu(s)
+
+        # [*, N_res, no_angles]
+        s = self.linear_out(s)
 
         return s
 
@@ -592,8 +668,8 @@ class AngleResnetBlock(nn.Module):
 
         self.c_hidden = c_hidden
 
-        self.linear_1 = nn.Linear(self.c_hidden, self.c_hidden, init="relu")
-        self.linear_2 = nn.Linear(self.c_hidden, self.c_hidden, init="final")
+        self.linear_1 = nn.Linear(self.c_hidden, self.c_hidden)
+        self.linear_2 = nn.Linear(self.c_hidden, self.c_hidden)
 
         self.relu = nn.ReLU()
 
@@ -739,15 +815,15 @@ class RigidDiffusion(nn.Module):
                  num_blocks: int = 3, # StructureUpdateModule的循环次数
 
                  # InputEmbedder config
-                 nf_dim: int = 4 + 6 + 20 + 320,
+                 nf_dim: int = 8 + 6 + 20 + 320,
                  c_n: int = 384, # Node channel dimension after InputEmbedding
                  relpos_k: int = 32, # relative position neighbour range
 
                  # PairEmbedder parameter
                  pair_dim: int = 23, # rbf + direction_vector + qu
-                 c_z: int = 128, # Pair channel dimension after InputEmbedding
-                 c_hidden_tri_att: int = 32, # x2 cause we x2 the input dimension
-                 c_hidden_tri_mul: int = 64, # Keep ori
+                 c_z: int = 64, # Pair channel dimension after InputEmbedding
+                 c_hidden_tri_att: int = 16, # x2 cause we x2 the input dimension
+                 c_hidden_tri_mul: int = 32, # Keep ori
                  pairemb_no_blocks: int = 2, # Keep ori
                  mha_no_heads: int = 4, # Keep ori
                  pair_transition_n: int = 2, # Keep ori
@@ -792,7 +868,7 @@ class RigidDiffusion(nn.Module):
                                                      epsilon
         )
 
-        self.noise_predictor_sincos = AngleResnet(c_n,
+        self.noise_predictor_sin_cos = AngleResnet(c_n,
                                                   c_resnet,
                                                   no_resnet_blocks,
                                                   no_angles,
@@ -800,7 +876,7 @@ class RigidDiffusion(nn.Module):
                                                   epsilon
         )
 
-        self.noise_predictor = AngleResnet(c_n,
+        self.noise_predictor = AngleNoise(c_n,
                                            c_resnet,
                                            no_resnet_blocks,
                                            no_angles//2, # 预测8个 改为预测4个
@@ -850,15 +926,18 @@ class RigidDiffusion(nn.Module):
                 seq_esm,
                 rigid_type,
                 rigid_property,
+                pad_mask,
         ):
+
+        angles_sin_cos = torch.stack([torch.sin(side_chain_angles), torch.cos(side_chain_angles)], dim=-1)
 
         # [*, N_rigid] Rigid
         rigids = structure_build.torsion_to_frame(seq_idx,
                                                  backbone_coords,
-                                                 side_chain_angles)  # add attention #frame
+                                                 angles_sin_cos)  # add attention #frame
 
         # flat_mask [*, N_rigid]， others [*, N_rigid, N_rigid, c]
-        pair_mask, rigid_mask, distance, altered_direction, orientation = structure_build.frame_to_edge(rigids, seq_idx)
+        pair_mask, rigid_mask, distance, altered_direction, orientation = structure_build.frame_to_edge(rigids, seq_idx, pad_mask)
 
         # [*, N_rigid, c_n], [*, N_rigid, N_rigid, c_z]
         init_node_emb, pair_emb = self.input_embedder(side_chain_angles,

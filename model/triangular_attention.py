@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 
 from primitives import LayerNorm, Attention
-from utils import permute_final_dims
+from model.utils1 import permute_final_dims
 
 
 

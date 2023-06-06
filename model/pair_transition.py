@@ -17,7 +17,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from model.primitives import Linear, LayerNorm
+from model.primitives import LayerNorm
 
 
 class PairTransition(nn.Module):
@@ -40,9 +40,9 @@ class PairTransition(nn.Module):
         self.n = n
 
         self.layer_norm = LayerNorm(self.c_z)
-        self.linear_1 = Linear(self.c_z, self.n * self.c_z, init="relu")
+        self.linear_1 = nn.Linear(self.c_z, self.n * self.c_z)
         self.relu = nn.ReLU()
-        self.linear_2 = Linear(self.n * self.c_z, c_z, init="final")
+        self.linear_2 = nn.Linear(self.n * self.c_z, c_z)
 
     def _transition(self, z, mask):
         # [*, N_res, N_res, C_z]
@@ -54,7 +54,7 @@ class PairTransition(nn.Module):
 
         # [*, N_res, N_res, C_z]
         z = self.linear_2(z)
-        z = z * mask
+        z = z * (mask.to('cuda'))
 
         return z
 

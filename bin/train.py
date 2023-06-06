@@ -41,7 +41,7 @@ from foldingdiff import custom_metrics as cm
 from torchsummary import summary
 
 #                        
-
+from pytorch_lightning.profiler import SimpleProfiler, AbstractProfiler, AdvancedProfiler, PyTorchProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
 
 assert torch.cuda.is_available(), "Requires CUDA to train"
@@ -492,6 +492,7 @@ def train(
 
     # end=================================lvying================================
   #  print("=================================LvYing Train Start================================")
+   # profiler = PyTorchProfiler(group_by_input_shapes=True,row_limit=-1, record_module_names=True, sort_by_key="self_cuda_memory_usage")
     trainer = pl.Trainer(
         default_root_dir=results_folder,
         gradient_clip_val=gradient_clip,
@@ -503,9 +504,12 @@ def train(
         log_every_n_steps=min(1, len(train_dataloader)),  # Log >= once per epoch
         accelerator=accelerator,
         strategy=strategy,
-        gpus=3,
+        gpus=7,
         enable_progress_bar=False,
         move_metrics_to_cpu=False,  # Saves memory
+     #   profiler=profiler,
+        amp_backend='apex',  
+        amp_level = 'O1'    
     )
    # print("=================================LvYing testing================================")
     print("++++++++++++++++++++++++++++++++++++model framework++++++++++++++++++++++++++++++++++++++")
@@ -516,7 +520,7 @@ def train(
         if param.grad is None:
            print(temp_idx,name)
            temp_idx = temp_idx+1
-    print("++++++++++++++++++++++++++++++++++++model framework++++++++++++++++++++++++++++++++++++++")
+  #  print("++++++++++++++++++++++++++++++++++++model framework++++++++++++++++++++++++++++++++++++++")
     print(train_dataloader.batch_size)
     print(valid_dataloader.batch_size)
    # data_iter = iter(train_dataloader)
@@ -529,6 +533,13 @@ def train(
         train_dataloaders=train_dataloader,
         val_dataloaders=valid_dataloader,
     )
+    
+   # profiler_results = profiler.profile
+   # summary = profiler_resultskey_averages().table(sort_by="self_cuda_memory_usage", row_limit=10)
+   # print(profiler_results)
+   # summary = torch.cuda.memory_summary(device="cuda", abbreviated=True)
+   # print(summary)
+    
     #print("=================================LvYing Train Finish================================")
     #Plot the losses
     #metrics_csv = os.path.join(
@@ -603,7 +614,7 @@ def main():
             "subset": args.toy,
             "single_timestep_debug": args.debug_single_time,
             "cpu_only": args.cpu,
-            "ngpu": 3,
+            "ngpu": 7,
             "dryrun": args.dryrun,
         },
     )    

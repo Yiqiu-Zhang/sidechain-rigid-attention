@@ -38,9 +38,15 @@ from foldingdiff.datasets import FEATURE_SET_NAMES_TO_ANGULARITY
 from graph_transformer.struct2seq import Struct2Seq
 from graph_transformer.self_attention import *
 from graph_transformer.protein_features import *
-from rigid_attention.structure_transformer import *
+#from rigid_attention.rigid_angle_transformer import *
+
+import sys
+sys.path.append(r"/mnt/petrelfs/lvying/code/sidechain-rigid-attention/")
+from model import *
+from model.rigid_diffusion import *
 #end=====================yinglv====================================
 import tracemalloc
+from torch.nn.parallel import DistributedDataParallel
 
 LR_SCHEDULE = Optional[Literal["OneCycleLR", "LinearWarmup"]]
 TIME_ENCODING = Literal["gaussian_fourier", "sinusoidal"]
@@ -85,9 +91,8 @@ class SinusoidalPositionEmbeddings(nn.Module):
     Positional embeddings
     """
 
-    def __init__(self, dim: int ) -> None:
-
-        super(SinusoidalPositionEmbeddings).__init__()
+    def __init__(self, dim: int) -> None:
+        super().__init__()
         self.dim = dim
 
     def forward(self, time: torch.Tensor) -> torch.Tensor:
@@ -230,7 +235,9 @@ class AngleDiffusionBase(nn.Module):
     }
     angular_loss_fn_dict = {
         "l1": losses.radian_l1_loss,
-        "smooth_l1": functools.partial(losses.radian_smooth_l1_loss, beta=torch.pi / 10),
+        "smooth_l1": functools.partial(
+            losses.radian_smooth_l1_loss, beta=torch.pi / 10
+        ),
         #========================new loss==============================
         "sin_cos": losses.square_chi_loss,
         "symmetric_sin_cos": losses.square_chi_loss_with_periodic,
@@ -274,27 +281,16 @@ class AngleDiffusionBase(nn.Module):
             len(self.ft_names) == n_inputs
         ), f"Got {len(self.ft_names)} names, expected {n_inputs}"
 
-        self.encoder = Ridge_Transformer(
-            d_model,
-            d_esm_seq,
-            n_rigid_type,
-            n_rigid_property ,
-            n_layers,
-            n_heads,
-            d_ff, #hidden layer dim
-            d_angles,
-            max_seq_len,
-            dropout,
-        )
-        d_z = 128
+        self.encoder = RigidDiffusion()
+        
         # Set up the time embedder
-        if time_encoding == "gaussian_fourier":
-            self.time_embed = GaussianFourierProjection(d_model)
-        elif time_encoding == "sinusoidal":
-            self.time_embed = SinusoidalPositionEmbeddings(d_model)
-        else:
-            raise ValueError(f"Unknown time encoding: {time_encoding}")
-        pl.utilities.rank_zero_info(f"Using time embedding: {self.time_embed}")
+      #  if time_encoding == "gaussian_fourier":
+      #      self.time_embed = GaussianFourierProjection(d_model)
+      #  elif time_encoding == "sinusoidal":
+      #      self.time_embed = SinusoidalPositionEmbeddings(d_model)
+      #  else:
+      #      raise ValueError(f"Unknown time encoding: {time_encoding}")
+      #  pl.utilities.rank_zero_info(f"Using time embedding: {self.time_embed}")
         
         # Epoch counters and timers
         self.train_epoch_counter = 0
@@ -335,15 +331,6 @@ class AngleDiffusionBase(nn.Module):
             config=config,
             ft_is_angular=ft_is_angular,
             time_encoding=train_args[time_encoding_key],
-            d_model = 384,
-            d_esm_seq = 320,
-            n_rigid_type= 20,
-            n_rigid_property = 6,
-            n_layers = 4,
-            n_heads = 8,
-            d_ff = 1024, #hidden layer dim
-            d_angles = 4,
-            max_seq_len = 5000,
             #dropout = 0.1
             # lr=train_args["lr"],
             # loss=train_args["loss"],
@@ -400,12 +387,12 @@ class AngleDiffusionBase(nn.Module):
         self,
         side_chain_angles: torch.Tensor, #[batch,128,4]
         backbone_coords: torch.Tensor, #[batch,128,4,3]
-        seq_idx: torch.Tensor,# [batch,128,4] ?
-        timestep: torch.Tensor, #[batch,1]
-        rigid_mask: torch.Tensor,
+        seq_idx: torch.Tensor,#[batch,128,4]
+        timestep: torch.Tensor, 
         x_seq_esm: torch.Tensor,  #[batch,128,1024]
         x_rigid_type: torch.Tensor, #[batch,128,5,20] x_rigid_type[-1]=one hot
         x_rigid_proterty: torch.Tensor, #[batch,128,5,6]
+        pad_mask: torch.Tensor,
         position_ids: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
@@ -416,22 +403,17 @@ class AngleDiffusionBase(nn.Module):
         batch_size, seq_length, *_ = input_shape
         logging.debug(f"Detected batch {batch_size} and seq length {seq_length}")
 
-        extended_attention_mask1 = rigid_mask[:, None, None, :]
-        extended_attention_mask2 = extended_attention_mask1.type_as(rigid_mask)
-        extended_attention_mask = (1.0 - extended_attention_mask2) * -10000.0
-        
+       
         assert len(side_chain_angles.shape) == 3  # batch_size, seq_length, features
 
-        # [batch, 1, 384]
-        time_encoded = self.time_embed(timestep.squeeze(dim=-1)).unsqueeze(1)
         output = self.encoder(side_chain_angles,
                               backbone_coords,
                               seq_idx,
-                              time_encoded,
-                              extended_attention_mask,
+                              timestep,
                               x_seq_esm,
                               x_rigid_type, 
-                              x_rigid_proterty
+                              x_rigid_proterty,
+                              pad_mask,
         ) 
         return output
 
@@ -510,18 +492,20 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         is equivalent to the number of features we are fitting to.
         """
         known_noise = batch["known_noise"]
-        
+       # print("====================batch[t]=================================",batch["t"])
+       # print("====================batch[t]=================================",batch["t"].shape)
         predicted_noise = self.forward(
             batch["corrupted"],  #[batch,128,4]
             batch["coords"], #[batch,128,4,3]
             batch["seq"], #[batch,128,4]
             batch["t"], 
-            batch["chi_mask"],
             batch["acid_embedding"],  #[batch,128,1024]
             batch['rigid_type_onehot'], #[batch,128,5,19] x_rigid_type[-1]=one hot
             batch['rigid_property'], #[batch,128,5,6]
+            batch['attn_mask']
         )
-       # print("====================predicted_noise.shape=================================",predicted_noise.shape)
+
+
         predicted_noise = torch.mul(predicted_noise, batch['chi_mask'])
         known_noise = torch.mul(known_noise, batch['chi_mask'])
       #  print("====================predicted_noise.shape=================================",predicted_noise.shape)
@@ -660,10 +644,10 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
             batch["coords"], #[batch,128,4,3]
             batch["seq"], #[batch,128,4]
             batch["t"], 
-            batch["chi_mask"],
             batch["acid_embedding"],  #[batch,128,1024]
             batch['rigid_type_onehot'], #[batch,128,5,19] x_rigid_type[-1]=one hot
             batch['rigid_property'], #[batch,128,5,6]
+            batch["attn_mask"],
         )
 
         assert (known_noise.shape == predicted_noise.shape), f"{known_noise.shape} != {predicted_noise.shape}"
@@ -694,6 +678,7 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         """
         Training step, runs once per batch
         """
+       # torch.autograd.set_detect_anomaly(True)
         #=======================================new loss=========================================
         # avg_loss = self._get_loss_terms_changed(batch) 
         #=======================================new loss=========================================
@@ -720,6 +705,13 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         }
         loss_dict["train_loss"] = avg_loss
         self.log_dict(loss_dict)  # Don't seem to need rank zero or sync dist
+        
+        
+      #  for name, param in self.named_parameters():
+      #      if param.grad is not None:
+      #          print(f"Parameter '{name}' has gradient")
+      #      else:
+      #          print(f"Parameter '{name}' does not have gradient")
 
         return avg_loss
 
@@ -822,7 +814,13 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
                 raise ValueError(f"Unknown lr scheduler {self.lr_scheduler}")
         pl.utilities.rank_zero_info(f"Using optimizer {retval}")
         return retval
-
+    def configure_ddp(self, model, device_ids):
+        ddp = DistributedDataParallel(
+            model,
+            device_ids=device_ids,
+            find_unused_parameters=True  # 设置find_unused_parameters=True
+        )
+        return ddp
 
 class BertForAutoregressiveBase(AngleDiffusionBase):
     """

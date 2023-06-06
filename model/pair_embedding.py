@@ -79,7 +79,7 @@ class PairStackBlock(nn.Module):
 
         del tmu_update
 
-        z = z + self.pair_transition(z,mask=pair_mask if _mask_trans else None)
+        z = z + self.pair_transition(z,pair_mask=pair_mask if _mask_trans else None)
 
         return z
 
@@ -142,7 +142,7 @@ class PairStack(nn.Module):
         """
 
         for pair_block in  self.blocks:
-            pair_emb = pair_block(pair_emb, mask = mask, _mask_trans = _mask_trans)
+            pair_emb = pair_block(pair_emb, pair_mask = mask, _mask_trans = _mask_trans)
 
         pair_emb = self.layer_norm(pair_emb)
 
@@ -195,9 +195,14 @@ class PairEmbedder(nn.Module):
     ) -> torch.Tensor:
 
 
+      #  print("================pair_time================",pair_time.shape)
+      #  print("================relative_pos================",relative_pos.shape)
+      #  print("================nf_pair_emb================",nf_pair_emb.shape)
         pair_emb = self.linear(pair_feature)
+      #  print("================pair_emb================",pair_emb.shape)
         pair_emb = pair_emb + pair_time + relative_pos + nf_pair_emb
-
+      #  print("================pair_emb================",pair_emb.shape)
         pair_emb = self.pair_stack(pair_emb, pair_mask)
+      #  print("================pair_emb================",pair_emb.shape)
 
         return pair_emb
