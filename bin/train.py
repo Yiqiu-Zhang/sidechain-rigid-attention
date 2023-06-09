@@ -322,7 +322,7 @@ def train(
     gradient_clip: float = 1.0,  # From BERT trainer
     batch_size: int = 16,
     lr: float = 5e-5,  # Default lr for huggingface BERT trainer
-    loss: modelling.LOSS_KEYS = "smooth_l1",
+    loss: modelling.LOSS_KEYS = "square_chi_loss_with_periodic",
     use_pdist_loss: Union[
         float, Tuple[float, float]
     ] = 0.0,  # Use the pairwise distances between CAs as an additional loss term, multiplied by this scalar
@@ -422,7 +422,7 @@ def train(
     
     loss_fn = loss
     if single_angle_debug > 0 or single_timestep_debug or syn_noiser:
-        loss_fn = functools.partial(losses.radian_smooth_l1_loss, beta=0.1 * np.pi)
+        loss_fn = functools.partial(losses.square_chi_loss_with_periodic, beta=0.1 * np.pi)
     logging.info(f"Using loss function: {loss_fn}")
 
     # Shape of the input is (batch_size, timesteps, features)

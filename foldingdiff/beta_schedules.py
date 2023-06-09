@@ -48,14 +48,16 @@ def compute_alphas(betas: torch.Tensor) -> Dict[str, torch.Tensor]:
     """
     alphas = 1.0 - betas
     alphas_cumprod = torch.cumprod(alphas, dim=0)
-    alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
+    alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0) # alphas_cumprod_prev ============ [alpha^{bar}_{t-1}]
     posterior_variance = betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
     sqrt_alphas_cumprod = torch.sqrt(alphas_cumprod)
     sqrt_one_minus_alphas_cumprod = torch.sqrt(1.0 - alphas_cumprod)
+
     return {
         "betas": betas,
         "alphas": alphas,
         "alphas_cumprod": alphas_cumprod,
+        "alphas_cumprod_prev": alphas_cumprod_prev,
         "sqrt_alphas_cumprod": sqrt_alphas_cumprod,
         "sqrt_one_minus_alphas_cumprod": sqrt_one_minus_alphas_cumprod,
         "posterior_variance": posterior_variance,

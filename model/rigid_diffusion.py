@@ -568,7 +568,6 @@ class AngleNoise(nn.Module):
 
         return s
 
-
 class AngleResnet(nn.Module):
     """
     Implements Algorithm 20, lines 11-14
@@ -742,12 +741,15 @@ class StructureUpdateModule(nn.Module):
         
         for i, block in enumerate(self.blocks):
             node_emb = block(node_emb, pair_emb, rigids, pair_mask)
+            '''
             node_emb1 =  torch.clone(node_emb)
             init_node_emb1 =  torch.clone(init_node_emb)
-            updated_chi_angles = self.angle_resnet(node_emb1, init_node_emb1)
-            pair_emb = self.edge_transition(node_emb1, pair_emb)
-            pair_emb = pair_emb* (pair_mask[..., None].to('cuda'))
-            
+            '''
+
+            updated_chi_angles = self.angle_resnet(node_emb, init_node_emb)
+
+            pair_emb = self.edge_transition(node_emb, pair_emb) * (pair_mask[..., None].to('cuda'))
+
             rigids = structure_build.torsion_to_frame(seq_idx, backbone_coords, updated_chi_angles)
             
             # [*, N_rigid, N_rigid, c] 没有再把计算过后的空间信息放过去，这个之后再去尝试
@@ -756,7 +758,7 @@ class StructureUpdateModule(nn.Module):
                                                                                                             seq_idx)
             '''
 
-        return node_emb
+        return updated_chi_angles
 
 class StructureBlock(nn.Module):
     def __init__(self,
@@ -861,6 +863,7 @@ class RigidDiffusion(nn.Module):
                                                      epsilon
         )
 
+        '''
        # self.noise_predictor_sincos = AngleResnet(c_n,
        #                                           c_resnet,
        #                                           no_resnet_blocks,
@@ -877,39 +880,6 @@ class RigidDiffusion(nn.Module):
                                            no_rigids,
                                            epsilon
         )
-        '''
-        self.trunk = nn.ModuleDict()
-
-        for b in range(num_blocks):
-            # [*, N_res, c_n * 5]
-            self.trunk[f'ipa_{b}'] = InvariantPointAttention(c_n,
-                                                             c_z,
-                                                             c_hidden,
-                                                             ipa_no_heads,
-                                                             no_qk_points,
-                                                             no_v_points)
-
-            self.trunk[f'ipa_ln_{b}'] = LayerNorm(c_n)
-
-            """
-            self.trunk[f'skip_embed_{b}'] = nn.Linear(
-                self._model_conf.node_embed_size,
-                self._ipa_conf.c_skip,
-                init="final"
-            )
-            """
-
-            self.trunk[f'node_transition_{b}'] = TransitionLayer(c_n)
-            self.trunk[f'angle_resnet_{b}'] = AngleResnet(c_n,
-                                                          c_resnet,
-                                                          no_resnet_blocks,
-                                                          no_angles,
-                                                          no_rigids,
-                                                          epsilon)
-
-            if b < num_blocks-1:
-                # No edge update on the last block.
-                self.trunk[f'edge_transition_{b}'] = EdgeTransition(c_n, c_z, c_z)
         '''
 
     def forward(self,
@@ -945,36 +915,12 @@ class RigidDiffusion(nn.Module):
                                                   pair_mask,
                                                   timesteps)
         # [*, N_res, c_n * 5]
-        node_emb = self.structure_update(seq_idx,
+        pred_chi_sin_cos = self.structure_update(seq_idx,
                                         backbone_coords,
                                         init_node_emb,
                                         pair_emb,
                                         rigids,
                                         pair_mask)
-
-
-        """
-        for b in range(self.num_blocks):
-
-            if b > 0:
-                rigids = structure_build.torsion_to_frame(seq_idx,
-                                                          backbone_coords,
-                                                          updated_chi_angles)  # add attention #frame
-
-                # [*, N_rigid, N_rigid, c]
-                pair_mask, rigid_mask, distance, altered_direction, orientation = structure_build.frame_to_edge(rigids,
-                                                                                                  seq_idx)
-            # [*, N_rigid, c_n]
-            ipa_emb = self.trunk[f'ipa_{b}'](node_emb, pair_emb, rigids, pair_mask)
-            node_emb = self.trunk[f'ipa_ln_{b}'](node_emb + ipa_emb)
-            node_emb = self.trunk[f'node_transition_{b}'](node_emb)
-
-            updated_chi_angles = self.trunk[f'angle_resnet_{b}'](node_emb, init_node_emb)
-
-            if b < self.num_blocks-1:
-                pair_emb = self.trunk[f'edge_transition_{b}'](node_emb, pair_emb)
-                pair_emb *= pair_mask[..., None]
-        """
 
         # Reshape N_rigid into N_res 这里其实一直没有好好写， 这五个rigid的表示直接被拼起来就用来预测角度了，这里是不是应该换一种方法？
         # 直接放到 IPA 里面怎么样
@@ -983,6 +929,6 @@ class RigidDiffusion(nn.Module):
 
         # noise = self.noise_predictor_sincos(node_emb, init_node_emb)
 
-        noise = self.noise_predictor(node_emb, init_node_emb)
-        return noise
+        #  noise = self.noise_predictor(node_emb, init_node_emb)
+        return pred_chi_sin_cos
 

@@ -165,40 +165,35 @@ def mask_mean(mask, value, dim, eps=1e-4):
 #=======================================new loss=========================================
 
 def square_chi_loss(
-    pred_noise: torch.Tensor, # [b,L,4]
-    true_noise: torch.Tensor,# [b,L,4]
+    pred_chi_sin_cos: torch.Tensor, # [b,L,4,2]
+    true_chi: torch.Tensor,# [b,L,4]
     restype_idx: torch.Tensor, # [b,L] restpyes in number
     chi_mask: torch.Tensor, # [b,L,4]
 ) -> torch.Tensor:
-    assert pred_noise.shape == true_noise.shape, \
-        f"Mismatched shapes: {pred_noise.shape} != {true_noise.shape}"
 
-    pred_noise_sin = torch.sin(pred_noise)
-    pred_noise_cos = torch.cos(pred_noise)
-    pred_noise_sin_cos = torch.stack([pred_noise_sin, pred_noise_cos], dim=-1)
+    true_chi_sin = torch.sin(true_chi)
+    true_chi_cos = torch.cos(true_chi)
+    true_chi_sin_cos = torch.stack([true_chi_sin, true_chi_cos], dim=-1)
 
-    true_noise_sin = torch.sin(true_noise)
-    true_noise_cos = torch.cos(true_noise)
-    true_noise_sin_cos = torch.stack([true_noise_sin, true_noise_cos], dim=-1)
+    assert pred_chi_sin_cos.shape == true_chi.shape, \
+        f"Mismatched shapes: {pred_chi_sin_cos.shape} != {true_chi_sin_cos.shape}"
 
-    sq_chi_error = torch.sum((true_noise_sin_cos - pred_noise_sin_cos)**2, dim=-1) 
+    sq_chi_error = torch.sum((true_chi_sin_cos - pred_chi_sin_cos)**2, dim=-1)
 
     sq_chi_loss = mask_mean(chi_mask, sq_chi_error,dim=(-2, -3))
-
 
     return sq_chi_loss
 #=======================================new loss=========================================
 
 #=======================================new loss=========================================
 def square_chi_loss_with_periodic(
-    pred_noise: torch.Tensor, # [b,L,4]
-    true_noise: torch.Tensor,# [b,L,4]
+    pred_chi_sin_cos: torch.Tensor, # [b,L,4,2]
+    true_chi: torch.Tensor,# [b,L,4]
     restype_idx: torch.Tensor, # [b,L] restpyes in number
     chi_mask: torch.Tensor, # [b,L,4]
 
 ) -> torch.Tensor:
-    assert pred_noise.shape == true_noise.shape, \
-        f"Mismatched shapes: {pred_noise.shape} != {true_noise.shape}"
+
 
     # [b, L, 21]
     residue_type_one_hot = F.one_hot(restype_idx, 20 + 1,) # 20 is the number of restype
@@ -206,26 +201,24 @@ def square_chi_loss_with_periodic(
     # [B, L, 4]
     chi_pi_periodic = torch.einsum(
         "...ij,jk->ik",
-        residue_type_one_hot.type(pred_noise.dtype),
-        pred_noise.new_tensor(constant.chi_pi_periodic), # [21, 4]
+        residue_type_one_hot.type(pred_chi_sin_cos.dtype),
+        pred_chi_sin_cos.new_tensor(constant.chi_pi_periodic), # [21, 4]
     )
     #[B, L, 4, 1]
     symmetric_shift = (1 - 2 * chi_pi_periodic).unsqueeze(-1)
 
+    true_chi_sin = torch.sin(true_chi)
+    true_chi_cos = torch.cos(true_chi)
+    true_chi_sin_cos = torch.stack([true_chi_sin, true_chi_cos], dim=-1)
 
-    pred_noise_sin = torch.sin(pred_noise)
-    pred_noise_cos = torch.cos(pred_noise)
-    pred_noise_sin_cos = torch.stack([pred_noise_sin, pred_noise_cos], dim=-1)
+    assert pred_chi_sin_cos.shape == true_chi_sin_cos.shape, \
+        f"Mismatched shapes: {pred_chi_sin_cos.shape} != {true_chi_sin_cos.shape}"
 
-    true_noise_sin = torch.sin(true_noise)
-    true_noise_cos = torch.cos(true_noise)
-    true_noise_sin_cos = torch.stack([true_noise_sin, true_noise_cos], dim=-1)
-
-    sq_chi_error = torch.sum((true_noise_sin_cos - pred_noise_sin_cos)**2, dim=-1)
+    sq_chi_error = torch.sum((true_chi_sin_cos - pred_chi_sin_cos)**2, dim=-1)
 
     # Now calculate symmetric chi error
-    symmetric_noise = symmetric_shift * true_noise_sin_cos
-    symmetric_error = torch.sum((symmetric_noise - pred_noise_sin_cos)**2, dim=-1)
+    symmetric_noise = symmetric_shift * true_chi_sin_cos
+    symmetric_error = torch.sum((symmetric_noise - pred_chi_sin_cos)**2, dim=-1)
 
     sq_chi_error = torch.minimum(sq_chi_error, symmetric_error)
 

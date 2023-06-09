@@ -240,7 +240,7 @@ class AngleDiffusionBase(nn.Module):
         ),
         #========================new loss==============================
         "sin_cos": losses.square_chi_loss,
-        "symmetric_sin_cos": losses.square_chi_loss_with_periodic,
+        "square_chi_loss_with_periodic": losses.square_chi_loss_with_periodic,
         #========================new loss==============================
     }
     # To have legacy models still work with these
@@ -425,7 +425,7 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
     def __init__(
         self,
         lr: float = 5e-5,
-        loss: Union[Callable, LOSS_KEYS] = "smooth_l1", # loss is str or function
+        loss: Union[Callable, LOSS_KEYS] = "square_chi_loss_with_periodic", # loss is str or function
         use_pairwise_dist_loss: Union[float, Tuple[float, float, int]] = 0.0,
         l2: float = 0.0,
         l1: float = 0.0,
@@ -637,9 +637,13 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         Returns the loss terms for the model. Length of the returned list
         is equivalent to the number of features we are fitting to.
         """
-        known_noise = batch["known_noise"]
+        angles = batch["angles"]
+
+        true_chi_sin = torch.sin(angles)
+        true_chi_cos = torch.cos(angles)
+        true_chi_sin_cos = torch.stack([true_chi_sin, true_chi_cos], dim=-1)
         
-        predicted_noise = self.forward(
+        predicted_angle_sin_cos = self.forward(
             batch["corrupted"],  #[batch,128,4]
             batch["coords"], #[batch,128,4,3]
             batch["seq"], #[batch,128,4]
@@ -650,23 +654,21 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
             batch["attn_mask"],
         )
 
-        assert (known_noise.shape == predicted_noise.shape), f"{known_noise.shape} != {predicted_noise.shape}"
+        assert (true_chi_sin_cos.shape == predicted_angle_sin_cos.shape), f"{true_chi_sin_cos.shape} != {predicted_angle_sin_cos.shape}"
 
-
-
-        loss_fn = self.angular_loss_fn_dict['symmetric_sin_cos']
+        loss_fn = self.angular_loss_fn_dict['square_chi_loss_with_periodic']
         loss_terms = loss_fn(
-            predicted_noise,
-            known_noise,
+            predicted_angle_sin_cos,
+            true_chi_sin_cos,
             batch['seq'],  # [b,L] restpyes in number
             batch['chi_mask'],  # [b,L,4]  Padded in chi_mask so no need to use padding mask
         )
         if write_preds is not None:
             with open(write_preds, "w") as f:
                 d_to_write = {
-                    "known_noise": known_noise.cpu().numpy().tolist(),
-                    "predicted_noise": predicted_noise.cpu().numpy().tolist(),
-                    "attn_mask": batch["chi_mask"].cpu().numpy().tolist(),
+                    "true_chi_sin_cos": true_chi_sin_cos.cpu().numpy().tolist(),
+                    "predicted_angle_sin_cos": predicted_angle_sin_cos.cpu().numpy().tolist(),
+                    "chi_mask": batch["chi_mask"].cpu().numpy().tolist(),
                     "losses": [l.item() for l in loss_terms],
                 }
                 json.dump(d_to_write, f)        

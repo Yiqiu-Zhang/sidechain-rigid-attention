@@ -844,16 +844,6 @@ class CathSideChainAnglesDataset(Dataset):
 
         # Perform padding/trimming
         assert angles.shape[0]==coords.shape[0]==acid_embedding.shape[0]==chi_mask.shape[0]==seq.shape[0]==rigid_type_onehot.shape[0]==rigid_property.shape[0]
-        #print("=======rigid_type_onehot==================",type(rigid_type_onehot))
-        #print("===================temp_name======================",temp_name)
-        #print("===================self.pad - rigid_type_onehot.shape[0]======================",self.pad - rigid_type_onehot.shape[0])
-        #print("===================angles.shape[0]======================",angles.shape)
-        #print("===================coords.shape[0]======================",coords.shape)
-        #print("===================acid_embedding.shape[0]======================",acid_embedding.shape)
-        #print("===================chi_mask.shape[0]======================",chi_mask.shape)
-        #print("===================seq.shape[0]======================",seq.shape)
-        #print("===================rigid_type_onehot.shape[0]======================",rigid_type_onehot.shape)
-        #print("=================== rigid_property[0]======================", rigid_property.shape)
         
         if angles.shape[0] < self.pad:
             angles = np.pad(
@@ -874,7 +864,7 @@ class CathSideChainAnglesDataset(Dataset):
                 mode="constant",
                 constant_values=0,
             )
-            chi_mask =np.pad(
+            chi_mask =np.pad(  # [128, 4]
                 chi_mask,
                 ((0, self.pad - chi_mask.shape[0]), (0, 0)),
                 mode="constant",
@@ -963,13 +953,13 @@ class CathSideChainAnglesDataset(Dataset):
        # print("===========111====================", seq.shape)
         retval = {
             "angles": angles,
-            "attn_mask": attn_mask,
+            "attn_mask": attn_mask, # attn_mask is useless since we have chi_mask which also include padding term
             "position_ids": position_ids,
             "lengths": torch.tensor(l, dtype=torch.int64),
             "coords": coords,
             "seq": seq,
             "acid_embedding": acid_embedding,
-            "chi_mask": chi_mask,
+            "chi_mask": chi_mask, # chi_mask is enough to use for all the masked condition
             'rigid_type_onehot': rigid_type_onehot, #(L,5,20)
             'rigid_property': rigid_property, # (L,5,6)
         }

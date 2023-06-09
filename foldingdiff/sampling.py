@@ -40,10 +40,11 @@ def p_sample(
     Sample the given timestep. Note that this _may_ fall off the manifold if we just
     feed the output back into itself repeatedly, so we need to perform modulo on it
     (see p_sample_loop)
+
     """
     # Calculate alphas and betas
-    alpha_beta_values = beta_schedules.compute_alphas(betas)
-    sqrt_recip_alphas = 1.0 / torch.sqrt(alpha_beta_values["alphas"])
+    alpha_beta_values = beta_schedules.compute_alphas(betas) # alpha_beta_values
+    sqrt_recip_alphas = 1.0 / torch.sqrt(alpha_beta_values["alphas"]) # alpha_beta_values["alphas"] ======= [alpha_t]
 
     # Select based on time
     t_unique = torch.unique(t)
@@ -65,12 +66,7 @@ def p_sample(
 
     # Equation 11 in the paper
     # Use our model (noise predictor) to predict the mean
-    model_mean = sqrt_recip_alphas_t * (
-        x
-        - betas_t
-        * model(x, coords, seq, t, chi_mask, acid_embedding, rigid_type, rigid_property)
-        / sqrt_one_minus_alphas_cumprod_t
-    )
+    model_mean = sqrt_recip_alphas_t * (x - betas_t * model(x, coords, seq, t, chi_mask, acid_embedding, rigid_type, rigid_property)/ sqrt_one_minus_alphas_cumprod_t)
 
     if t_index == 0:
         return model_mean
@@ -80,6 +76,62 @@ def p_sample(
         # Algorithm 2 line 4:
         return model_mean + torch.sqrt(posterior_variance_t) * noise
 
+
+@torch.no_grad()
+def p_sample_x_0(
+        model: nn.Module,
+        x: torch.Tensor,
+        coords: torch.Tensor,
+        seq: torch.Tensor,
+        t: torch.Tensor,
+        chi_mask: torch.Tensor,
+        acid_embedding: torch.Tensor,
+        rigid_type: torch.Tensor,
+        rigid_property: torch.Tensor,
+        seq_lens: Sequence[int],
+        t_index: torch.Tensor,
+        betas: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Sample the given timestep. Note that this _may_ fall off the manifold if we just
+    feed the output back into itself repeatedly, so we need to perform modulo on it
+    (see p_sample_loop)
+
+    """
+    # Calculate alphas and betas
+    alpha_beta_values = beta_schedules.compute_alphas(betas)  # alpha_beta_values
+    sqrt_alpha = torch.sqrt(alpha_beta_values["alphas"])
+    sqrt_alphas_cumprod_prev = torch.sqrt(alpha_beta_values["alphas_cumprod_prev"])
+
+    # Select based on time
+    t_unique = torch.unique(t)
+    assert len(t_unique) == 1, f"Got multiple values for t: {t_unique}"
+    t_index = t_unique.item()
+    sqrt_alpha_t = sqrt_alpha[t_index]
+    sqrt_alphas_cumprod_prev_t = sqrt_alphas_cumprod_prev[t_index]
+    alphas_cumprod_t = alpha_beta_values["alphas_cumprod"][t_index]
+    alphas_cumprod_prev_t = alpha_beta_values["alphas_cumprod_prev"][t_index]
+    betas_t = betas[t_index]
+
+
+
+    # Create the attention mask
+    attn_mask = torch.zeros(x.shape[:2], device=x.device)
+    for i, l in enumerate(seq_lens):
+        attn_mask[i, :l] = 1.0
+
+    # Equation 11 in the paper
+    # Use our model (noise predictor) to predict the mean
+    model_mean = sqrt_alphas_cumprod_prev_t * betas_t * model(x, coords, seq, t, chi_mask, acid_embedding, rigid_type, rigid_property) / (1 - alphas_cumprod_t) \
+                 + sqrt_alpha_t * (1 - alphas_cumprod_prev_t) * x / (1 - alphas_cumprod_t)
+
+    if t_index == 0:
+        return model_mean
+    else:
+        posterior_variance_t = alpha_beta_values["posterior_variance"][t_index]
+        noise = torch.randn_like(x)
+        # Algorithm 2 line 4:
+        return model_mean + torch.sqrt(posterior_variance_t) * noise
 
 @torch.no_grad()
 def p_sample_loop(
@@ -114,9 +166,26 @@ def p_sample_loop(
     for i in tqdm(
         reversed(range(0, timesteps)), desc="sampling loop time step", total=timesteps, disable=disable_pbar
     ):
+        '''
         # Shape is (batch, seq_len, 4)
         img = p_sample(
             model=model,            
+            x=img,
+            coords=coords,
+            seq=seq,
+            t=torch.full((b,), i, device=device, dtype=torch.long), # time vector
+            chi_mask=chi_mask,
+            acid_embedding=acid_embedding,
+            rigid_type=rigid_type,
+            rigid_property=rigid_property,
+            seq_lens=lengths,
+            t_index=i,
+            betas=betas,
+        )
+        '''
+
+        img = p_sample_x_0(
+            model=model,
             x=img,
             coords=coords,
             seq=seq,

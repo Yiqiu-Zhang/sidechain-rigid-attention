@@ -220,14 +220,14 @@ def get_torsion_seq(pdb_path):
                    'coords': X,
                    'seq': num_acid_seq,
                    "seq_temp": seq_single,
-                   "chi_mask": chi_mask,
+                   "chi_mask": chi_mask, # [L,4]
                    'rigid_type_onehot': rigid_type_onehot, #(L,5,20)
                    'rigid_property': rigid_property, # (L,5,6)
                    'fname': pdb_path,
                    }
     return dict_struct
 
-#t = get_torsion_seq('./data/1CRN.pdb')
+t = get_torsion_seq('./data/1CRN.pdb')
 #l = len(t1)
 #l2 = len(t['seq'])
 #seq= "".join(t["seq"])

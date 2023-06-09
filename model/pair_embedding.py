@@ -173,14 +173,14 @@ class PairEmbedder(nn.Module):
                 Output channel dimension
         """
         super(PairEmbedder, self).__init__()
-
+        '''
         self.pair_stack = PairStack(c_z,
                                     c_hidden_tri_att,
                                     c_hidden_tri_mul,
                                     no_blocks,
                                     no_heads,
                                     pair_transition_n)
-
+        '''
         # Despite there being no relu nearby, the source uses that initializer
         self.linear = nn.Linear(pair_dim, c_z)
 
@@ -202,7 +202,7 @@ class PairEmbedder(nn.Module):
       #  print("================pair_emb================",pair_emb.shape)
         pair_emb = pair_emb + pair_time + relative_pos + nf_pair_emb
       #  print("================pair_emb================",pair_emb.shape)
-        pair_emb = self.pair_stack(pair_emb, pair_mask)
+      #  pair_emb = self.pair_stack(pair_emb, pair_mask)
       #  print("================pair_emb================",pair_emb.shape)
 
         return pair_emb
