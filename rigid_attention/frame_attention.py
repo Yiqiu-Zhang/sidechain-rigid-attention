@@ -157,8 +157,8 @@ class Rigid_MultiHeadAttention(nn.Module):
         v_3d = self.value_3d(x_rigid) #[batch, 128*5, 3] 
         scores = torch.matmul(q, k.transpose(-2, -1)) / torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float)) #[batch, n_heads, rigid_len, rigid_len] [batch,8,128*5,128*5]
         
-        attention_mask = attention_mask.unsqueeze(-3).to('cuda')
-        attention_mask = attention_mask.repeat(1, 8, 1, 1).to('cuda')
+        attention_mask = attention_mask.unsqueeze(-3)
+        attention_mask = attention_mask.repeat(1, 8, 1, 1)
         if attention_mask is not None:
            # Mask invalid positions
            scores = scores.masked_fill_(attention_mask == 0, -1e9) 

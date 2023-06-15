@@ -19,7 +19,7 @@ seaborn.set_context(context="talk")
 
 # define embedding of ridig and esm-seq
 class Ridig_Embeddings(nn.Module):
-    def __init__(self, d_model, d_esm_seq,n_rigid_type, n_rigid_property):
+    def __init__(self, d_model, d_esm_seq, n_rigid_type, n_rigid_property):
         super(Ridig_Embeddings, self).__init__()
       #  self.embed_rigid_type = nn.Embedding(n_rigid_type, d_model)
        # self.embed_rigid_property = nn.Embedding(n_rigid_property, d_model)
@@ -28,10 +28,10 @@ class Ridig_Embeddings(nn.Module):
         self.seq2d = nn.Linear(d_esm_seq, d_model) 
         self.mlp2d = nn.Sequential(
            #     nn.BatchNorm1d(d_model+d_model+d_model+d_model),
-                nn.Linear(d_model+d_model+d_model+d_model, 4*d_model//2,torch.float64),
+                nn.Linear(d_model+d_model+d_model+d_model, 4*d_model//2, torch.float64),
            #     nn.BatchNorm1d(d_model//2),
                 nn.ReLU(),
-                nn.Linear(4*d_model//2, d_model,torch.float64)
+                nn.Linear(4*d_model//2, d_model, torch.float64)
         )
        # self.embed_rigid_idx =  nn.Embedding(5, d_model)
         self.embed_rigid_idx =  nn.Linear(5, d_model, dtype=torch.float64)
@@ -49,9 +49,9 @@ class Ridig_Embeddings(nn.Module):
         
         rigid_idx = torch.zeros([x_rigid_type.shape[0], x_rigid_type.shape[1], 5], dtype=torch.int64)
         rigid_idx[:, :, :] = torch.arange(5) 
-       # x_rigid_idx = F.one_hot(rigid_idx, num_classes=5).to('cuda')
+       # x_rigid_idx = F.one_hot(rigid_idx, num_classes=5)
         x_rigid_idx = F.one_hot(rigid_idx, num_classes=5)
-        x_rigid_idx = x_rigid_idx.double().to('cuda')
+        x_rigid_idx = x_rigid_idx.double()
        #@ print("====x_rigid_idx========",x_rigid_idx)
         x_embed_rigid_idx = self.embed_rigid_idx(x_rigid_idx)
         x_seq = self.seq2d(x_seq_esm) #[batch, L, 512]
@@ -181,8 +181,8 @@ class Rigid_MultiHeadAttention(nn.Module):
         
         scores = torch.matmul(q, k.transpose(-2, -1)) / torch.sqrt(torch.tensor(self.head_dim, dtype=torch.float)) #[batch, n_heads, rigid_len, rigid_len] [batch,8,128*5,128*5]
         
-        attention_mask = attention_mask.unsqueeze(-3).to('cuda')
-        attention_mask = attention_mask.repeat(1, 8, 1, 1).to('cuda')
+        attention_mask = attention_mask.unsqueeze(-3)
+        attention_mask = attention_mask.repeat(1, 8, 1, 1)
         if attention_mask is not None:
            # Mask invalid positions
            scores = scores.masked_fill_(attention_mask == 0, -1e9) 

@@ -1,4 +1,4 @@
-from model import RigidDiffusion
+from rigid_diffusion import RigidDiffusion
 import torch
 batch = 2
 n_rigid = 25
@@ -12,6 +12,7 @@ timesteps = torch.randint(0,1000,(batch,1))
 rigid_type = torch.randn((batch, n_res, 5, 20))
 rigid_property = torch.randn((batch,n_res,5,6))
 pad_mask = torch.randint(0,1, (batch,n_res))
+
 model = RigidDiffusion()
 run = model.forward(side_chain_angles,
                     backbone_coords,

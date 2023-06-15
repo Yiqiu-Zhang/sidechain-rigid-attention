@@ -168,7 +168,7 @@ class NeighborAttention(nn.Module):
     def _masked_softmax(self, attend_logits, mask_attend, dim=-1):
         """ Numerically stable masked softmax """
         negative_inf = np.finfo(np.float32).min
-        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf).to('cuda'))
+        attend_logits = torch.where(mask_attend > 0, attend_logits, torch.tensor(negative_inf))
         attend = F.softmax(attend_logits, dim)
         attend = mask_attend * attend
         return attend

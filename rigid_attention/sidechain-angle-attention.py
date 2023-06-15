@@ -139,9 +139,9 @@ def calculate_rbf(D):
     # Distance radial basis function
     D_min, D_max, D_count = 0., 20., 16
     D_mu = torch.linspace(D_min, D_max, D_count)
-    D_mu = D_mu.view([1, 1, 1, -1]).to('cuda')
+    D_mu = D_mu.view([1, 1, 1, -1])
     D_sigma = (D_max - D_min) / D_count
-    D_expand = torch.unsqueeze(D, -1).to('cuda')
+    D_expand = torch.unsqueeze(D, -1)
     RBF = torch.exp(-((D_expand - D_mu) / D_sigma)**2)
     return RBF
 
@@ -186,8 +186,8 @@ class Rigid_MultiHeadAttention(nn.Module):
         #print("==================rbf4=================",dis.shape)
         scores = scores + dis
         #print("==================rbf4=================",scores.shape)
-        attention_mask = attention_mask.unsqueeze(-3).to('cuda')
-        attention_mask = attention_mask.repeat(1, 8, 1, 1).to('cuda')
+        attention_mask = attention_mask.unsqueeze(-3)
+        attention_mask = attention_mask.repeat(1, 8, 1, 1)
         if attention_mask is not None:
            # Mask invalid positions
            scores = scores.masked_fill_(attention_mask == 0, -1e9) 

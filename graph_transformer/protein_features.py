@@ -110,7 +110,7 @@ class ProteinFeatures(nn.Module):
         D_sigma = (D_max - D_min) / D_count
         D_expand = torch.unsqueeze(D, -1).cpu()
        # print('D_expand', D_expand.device)
-        RBF = torch.exp(-((D_expand - D_mu) / D_sigma)**2).to('cuda')
+        RBF = torch.exp(-((D_expand - D_mu) / D_sigma)**2)
        # print('RBF', RBF.device)
         # for i in range(D_count):
         #     fig = plt.figure(figsize=(4,4))
@@ -355,7 +355,7 @@ class ProteinFeatures(nn.Module):
         RBF = self._rbf(D_neighbors)
 
         # Pairwise embeddings
-        E_positional = self.embeddings(E_idx).to('cuda')
+        E_positional = self.embeddings(E_idx)
 
 
         #print('O_features',O_features.device)

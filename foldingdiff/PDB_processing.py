@@ -227,7 +227,7 @@ def get_torsion_seq(pdb_path):
                    }
     return dict_struct
 
-t = get_torsion_seq('./data/1CRN.pdb')
+#t = get_torsion_seq('./data/1CRN.pdb')
 #l = len(t1)
 #l2 = len(t['seq'])
 #seq= "".join(t["seq"])

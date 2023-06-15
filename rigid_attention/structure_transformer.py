@@ -47,7 +47,7 @@ class Ridig_Embeddings(nn.Module):
         rigid_idx = torch.zeros([x_rigid_type.shape[0], x_rigid_type.shape[1], 5], dtype=torch.int64)
         rigid_idx[:, :, :] = torch.arange(5) 
         x_rigid_idx = F.one_hot(rigid_idx, num_classes=5)
-        x_rigid_idx = x_rigid_idx.double().to('cuda')
+        x_rigid_idx = x_rigid_idx.double()
         x_embed_rigid_idx = self.embed_rigid_idx(x_rigid_idx)
         x_seq = self.seq2d(x_seq_esm) #[batch, L, 512]
         x_seq = x_seq.unsqueeze(-2)
@@ -147,9 +147,9 @@ def calculate_rbf(D):
     # Distance radial basis function
     D_min, D_max, D_count = 0., 20., 16
     D_mu = torch.linspace(D_min, D_max, D_count)
-    D_mu = D_mu.view([1, 1, 1, -1]).to('cuda')
+    D_mu = D_mu.view([1, 1, 1, -1])
     D_sigma = (D_max - D_min) / D_count
-    D_expand = torch.unsqueeze(D, -1).to('cuda')
+    D_expand = torch.unsqueeze(D, -1)
     RBF = torch.exp(-((D_expand - D_mu) / D_sigma)**2)
     return RBF
 
@@ -194,8 +194,8 @@ class Rigid_MultiHeadAttention(nn.Module):
         #print("==================rbf4=================",dis.shape)
         scores = scores + dis
         #print("==================rbf4=================",scores.shape)
-        attention_mask = attention_mask.unsqueeze(-3).to('cuda')
-        attention_mask = attention_mask.repeat(1, 8, 1, 1).to('cuda')
+        attention_mask = attention_mask.unsqueeze(-3)
+        attention_mask = attention_mask.repeat(1, 8, 1, 1)
         if attention_mask is not None:
            # Mask invalid positions
            scores = scores.masked_fill_(attention_mask == 0, -1e9) 
