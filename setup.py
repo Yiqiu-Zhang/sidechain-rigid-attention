@@ -4,7 +4,7 @@ with open("README.md", "r") as source:
     long_description = source.read()
 
 setup(
-    name="sidechain-rigid-attention",
+    name="sidechain-rigid-attention_yiqiu",
     author="Ying Lv",
     packages=find_packages(),
     include_package_data=True,

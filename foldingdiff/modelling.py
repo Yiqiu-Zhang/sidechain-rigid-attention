@@ -41,7 +41,7 @@ from graph_transformer.protein_features import *
 #from rigid_attention.rigid_angle_transformer import *
 
 import sys
-sys.path.append(r"/mnt/petrelfs/lvying/code/sidechain-rigid-attention/")
+sys.path.append(r"/mnt/petrelfs/lvying/code/sidechain-rigid-attention_yiqiu/")
 from model import *
 from model.rigid_diffusion import *
 #end=====================yinglv====================================
@@ -415,6 +415,7 @@ class AngleDiffusionBase(nn.Module):
                               x_rigid_proterty,
                               pad_mask,
         ) 
+      #  print("===========output==========",output.shape)
         return output
 
 class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
@@ -642,7 +643,7 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         true_chi_sin = torch.sin(angles)
         true_chi_cos = torch.cos(angles)
         true_chi_sin_cos = torch.stack([true_chi_sin, true_chi_cos], dim=-1)
-        
+    
         predicted_angle_sin_cos = self.forward(
             batch["corrupted"],  #[batch,128,4]
             batch["coords"], #[batch,128,4,3]
@@ -653,7 +654,12 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
             batch['rigid_property'], #[batch,128,5,6]
             batch["attn_mask"],
         )
-
+        #print("=========================predicted_angle_sin_cos======================",predicted_angle_sin_cos)
+        #if torch.isnan(predicted_angle_sin_cos).any():
+        #    print("predicted_angle_sin_cos张量包含NaN")
+        #    raise ValueError("predicted_angle_sin_cos)数据中包含 NaN，请中断程序执行") 
+        #print("======true_chi_sin_cos.shape========",true_chi_sin_cos.shape)
+       # print("======predicted_angle_sin_cos.shape========",predicted_angle_sin_cos.shape)
         assert (true_chi_sin_cos.shape == predicted_angle_sin_cos.shape), f"{true_chi_sin_cos.shape} != {predicted_angle_sin_cos.shape}"
 
         loss_fn = self.angular_loss_fn_dict['square_chi_loss_with_periodic']
@@ -686,8 +692,8 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         #=======================================new loss=========================================
         
         #print("=================================",batch["chi_mask"].shape)
-        loss_terms = self._get_loss_terms(batch)
-        #print("================loss terms========================",loss_terms)
+        loss_terms = self._get_loss_terms_changed(batch)
+        
         avg_loss = torch.mean(loss_terms)
         #print("==============avg_loss==============",avg_loss)
         # L1 loss implementation
@@ -736,7 +742,7 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         Validation step
         """
         with torch.no_grad():
-            loss_terms = self._get_loss_terms(
+            loss_terms = self._get_loss_terms_changed(
                 batch,
                 write_preds=os.path.join(
                     self.write_preds_to_dir, f"{self.write_preds_counter}_preds.json"

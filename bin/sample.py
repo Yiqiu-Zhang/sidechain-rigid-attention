@@ -54,6 +54,9 @@ FT_NAME_MAP = {
     "C:1N:1CA": r"$\theta_3$",
 }
 
+#srun -p bio_s1 -n 1 --ntasks-per-node=1 --cpus-per-task=20 --gres=gpu:1  python sample.py -m resutl_IPA_Model_6_15 -o IPA_sample_Angle_6.19_casp   
+
+
 
 def build_datasets(
     model_dir: Path, load_actual: bool = True
@@ -300,7 +303,7 @@ def build_parser() -> argparse.ArgumentParser:
         "-c",
         "--CATH_DIR",
         type=str,
-        default="../data/test/",
+        default="../data/standard_results/native/casp_fixed/",
         help="backbone pdb",
     )
     #=============================lvying ======================================================
@@ -311,7 +314,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def get_pdb_data(CATH_DIR):
     
-    fnames = glob.glob(os.path.join(CATH_DIR, "dompdb", "*"))
+    # fnames = glob.glob(os.path.join(CATH_DIR, "dompdb", "*"))
+    fnames = glob.glob(os.path.join(CATH_DIR, "*"))
     structures = []
     pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
     structures = list(pool.map(get_torsion_seq,fnames, chunksize=250))
@@ -333,12 +337,12 @@ def main() -> None:
     assert not os.listdir(outdir), f"Expected {outdir} to be empty!"
 
     # Download the model if it was given on modelhub
-    if utils.is_huggingface_hub_id(args.model): #false
-        logging.info(f"Detected huggingface repo ID {args.model}")
-        dl_path = snapshot_download(args.model)  # Caching is automatic
-        assert os.path.isdir(dl_path)
-        logging.info(f"Using downloaded model at {dl_path}")
-        args.model = dl_path
+    #if utils.is_huggingface_hub_id(args.model): #false
+    #    logging.info(f"Detected huggingface repo ID {args.model}")
+    #    dl_path = snapshot_download(args.model)  # Caching is automatic
+    #    assert os.path.isdir(dl_path)
+    #    logging.info(f"Using downloaded model at {dl_path}")
+    #    args.model = dl_path
 
     plotdir = outdir / "plots"
     os.makedirs(plotdir, exist_ok=True)
@@ -392,8 +396,8 @@ def main() -> None:
         if len(structure['seq'])>128:
             print('length>128')
             continue
-        print("=============fname=================",structure['fname'])
-        print("=============seq=================",structure['seq'])
+      #  print("=============fname=================",structure['fname'])
+      #  print("=============seq=================",structure['seq'])
         sampled = sampling.sample(
             model,
             train_dset,
@@ -409,16 +413,15 @@ def main() -> None:
         ]
         # Write the raw sampled items to csv files
         logging.info(f"Writing sampled angles to {sampled_angles_folder}")
-        print(structure['fname'])
-        print(type(structure['fname']))
+       # print(structure['fname'])
+       # print(type(structure['fname']))
         pdbname = Path(structure['fname']).name
-        print(pdbname)
-        print(type(pdbname))
+        #print(pdbname)
+        #print(type(pdbname))
         for i, s in enumerate(sampled_dfs):
             s.to_csv(sampled_angles_folder / f"{pdbname}_generated_{i}.csv.gz")
         j = 0
         for sampled_angle in final_sampled: 
-            print("===========tttttt=============",len(sampled_angle))
             write_preds_pdb_file(structure,sampled_angle, outdir_pdb, pdbname, j)
             j = j+1
     #============================================sampling========================================

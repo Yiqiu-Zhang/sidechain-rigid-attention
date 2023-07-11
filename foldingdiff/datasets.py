@@ -364,8 +364,8 @@ class CathCanonicalAnglesDataset(Dataset):
         angles = self.structures[index]["angles"]
         # NOTE coords are NOT shifted or wrapped, has same length as angles
         coords = self.structures[index]["coords"]
-        print("===================angles.shape[0]=======================",angles.shape[0])
-        print("=================== coords.shape[0]==============",coords.shape[0])
+        #print("===================angles.shape[0]=======================",angles.shape[0])
+        #print("=================== coords.shape[0]==============",coords.shape[0])
         assert angles.shape[0] == coords.shape[0]
 
         # If given, offset the angles with mean
@@ -1079,10 +1079,10 @@ class AnglesEmptyDataset(Dataset):
         k = "coords" if feature_set_key == "cart-coords" else "angles"
         self.feature_is_angular = {k: FEATURE_SET_NAMES_TO_ANGULARITY[feature_set_key]}
         self.feature_names = {k: FEATURE_SET_NAMES_TO_FEATURE_NAMES[feature_set_key]}
-        print("=========self.feature_is_angular===================",self.feature_is_angular)
-        print("=========self.feature_names===================",self.feature_names)
-        print("=========self.feature_names[k===================",len(self.feature_names[k]))
-        print("=========self.feature_is_angular[k]===================",len(self.feature_is_angular[k]))
+       # print("=========self.feature_is_angular===================",self.feature_is_angular)
+       # print("=========self.feature_names===================",self.feature_names)
+       # print("=========self.feature_names[k===================",len(self.feature_names[k]))
+       # print("=========self.feature_is_angular[k]===================",len(self.feature_is_angular[k]))
         assert len(self.feature_names[k]) == len(self.feature_is_angular[k])
         logging.info(
             f"Angularity definitions: {self.feature_is_angular} | {self.feature_names}"

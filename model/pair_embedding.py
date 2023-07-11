@@ -1,3 +1,6 @@
+######################################################################################
+#为了符合pair embedding的更新方式，修改了此文件
+######################################################################################
 from torch import nn
 import torch
 from functools import partial
@@ -182,25 +185,32 @@ class PairEmbedder(nn.Module):
                                     pair_transition_n)
         '''
         # Despite there being no relu nearby, the source uses that initializer
-        self.linear = nn.Linear(pair_dim, c_z)
+        self.linear_1 = nn.Linear(pair_dim, c_z)
+        self.relu = nn.ReLU()
+        self.linear_2 = nn.Linear(c_z, c_z)
+        self.ln = nn.LayerNorm(c_z)
 
 
     def forward(
         self,
         pair_feature: torch.Tensor,
-        pair_mask: torch.Tensor,
+     #   pair_mask: torch.Tensor,
         pair_time: torch.Tensor, # [bathc, N_rigid, N_rigid, c_z]
         relative_pos: torch.Tensor,
-        nf_pair_emb: torch.Tensor,
+     #   nf_pair_emb: torch.Tensor,
     ) -> torch.Tensor:
 
-
+        pair_emb = self.linear_1(pair_feature)
+        pair_emb = self.relu(pair_emb)
+        pair_emb = self.linear_2(pair_emb)
+        pair_emb = pair_emb + pair_time + relative_pos # without adding nf_pair_emb
+        pair_emb = self.ln(pair_emb)
       #  print("================pair_time================",pair_time.shape)
       #  print("================relative_pos================",relative_pos.shape)
       #  print("================nf_pair_emb================",nf_pair_emb.shape)
-        pair_emb = self.linear(pair_feature)
+      #  pair_emb = self.linear(pair_feature)
       #  print("================pair_emb================",pair_emb.shape)
-        pair_emb = pair_emb + pair_time + relative_pos + nf_pair_emb
+      #  pair_emb = pair_emb + pair_time + relative_pos + nf_pair_emb
       #  print("================pair_emb================",pair_emb.shape)
       #  pair_emb = self.pair_stack(pair_emb, pair_mask)
       #  print("================pair_emb================",pair_emb.shape)

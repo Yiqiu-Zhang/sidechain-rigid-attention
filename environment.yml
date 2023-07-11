@@ -1,4 +1,4 @@
-name: sidechain
+name: IPAsidechain
 channels:
   - defaults
   - anaconda

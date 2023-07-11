@@ -24,7 +24,7 @@ def rotate_sidechain(
     default_frame = torch.tensor(restype_rigid_group_default_frame,
                               dtype=angles.dtype,
                               device=angles.device,
-                              requires_grad=False)
+                              requires_grad=True)
     # [*, N, 8, 4, 4]
     res_default_frame = default_frame[restype_idx, ...]
     
@@ -38,16 +38,8 @@ def rotate_sidechain(
     # [*,N,4] + [*,N,4] == [*,N,8]
     # adding 4 zero angles which means no change to the default value.
     #=============================训练时.to('cuda')保留，解开注释===================================================#
-    print("=============sin_angles==============",sin_angles.shape)
-    print("=============cos_angles==============",cos_angles.shape)
-    print("=============torch.zeros(*restype_idx.shape, 4)==============",torch.zeros(*restype_idx.shape, 4).shape)
-    print("=============torch.ones(*restype_idx.shape, 4)==============",torch.ones(*restype_idx.shape, 4).shape)
-    
     sin_angles = torch.cat([torch.zeros(*restype_idx.shape, 4).to('cuda'), sin_angles.to('cuda')],dim=-1)
     cos_angles = torch.cat([torch.ones(*restype_idx.shape, 4).to('cuda'), cos_angles.to('cuda')],dim=-1)
-    print("=============sin_angles==============",sin_angles.shape)
-    print("=============cos_angles==============",cos_angles.shape)
-
     #=============================训练时.to('cuda')保留，解开注释===================================================#
 
     
@@ -256,19 +248,18 @@ def frame_to_edge(frames: geometry.Rigid, # [*, N_rigid] Rigid
                   aatype_idx, # [*, N_res]
                   pad_mask # [*, N_res]
                   ):
-    '''
+    """
     compute edge information between two frames distance, direction, orientation
     Args:
         frames: protein rigid frames [*, N_, 5]
 
     Returns:
 
-    '''
+    """
 
     # [20, 5]
     restype_frame5_mask = torch.tensor(restype_frame_mask)
-    print("=========restype_frame5_mask =============",restype_frame5_mask.device)
-    print("=========pad_mask=============",pad_mask.device)
+
     # [*, N_res, 5]
     frame_mask = restype_frame5_mask[aatype_idx, ...].to('cuda')
     frame_mask = frame_mask * pad_mask[..., None]
@@ -280,32 +271,8 @@ def frame_to_edge(frames: geometry.Rigid, # [*, N_rigid] Rigid
     pair_mask = flat_mask[..., None] * flat_mask[..., None, :]
     # [*, N_rigid, N_rigid]
     distance, altered_direction, orientation = frames.edge()
-    # [*, N_rigid, N_rigid, 3]
-    #  altered_direction = altered_direction.type(torch.float64)
-    # [*, N_rigid, N_rigid, 3, 3]
-    #  orientation = orientation.type(torch.float64)
 
     return pair_mask, flat_mask, distance, altered_direction, orientation
-
-
-def update_edge(frames: geometry.Rigid,  # [*, N_rigid] Rigid
-                pair_mask: torch.Tensor,  # [*, N_res]
-                top_k: int,
-                ):
-
-
-    # [*, N_rigid, N_rigid]
-    distance, altered_direction, orientation = frames.edge()
-
-    D = pair_mask * distance
-
-    D_max, _ = torch.max(D, -1, keepdim=True)
-    D_adjust = D + (1. - pair_mask) * D_max  # give masked position value D_max
-
-    # Value of distance [*, N_rigid, K], Index of distance [*, N_rigid, K]
-    _, E_idx = torch.topk(D_adjust, top_k, dim=-1, largest=False)
-
-    return distance, altered_direction, orientation, E_idx
 
 def write_preds_pdb_file(structure, sampled_dfs, out_path, fname, j):
     

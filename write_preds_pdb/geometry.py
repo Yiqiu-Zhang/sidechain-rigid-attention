@@ -181,7 +181,7 @@ class Rigid:
         orientation = torch.einsum('bmij,bnjk->bmnik', rot_T, rot)
 
         displacement =  self.trans[...,None,:,:] - self.trans[...,None,:]
-        distance = torch.linalg.vector_norm(displacement,dim=-1)
+        distance = torch.linalg.vector_norm(displacement,dim=-1) #
         direction = F.normalize(displacement,dim=-1)
         altered_direction = torch.einsum('bmij,bmnj->bmni', rot_T.double(), direction.double())
 

@@ -41,7 +41,7 @@ from foldingdiff import custom_metrics as cm
 from torchsummary import summary
 
 #                        
-from pytorch_lightning.profiler import SimpleProfiler, AbstractProfiler, AdvancedProfiler, PyTorchProfiler
+#from pytorch_lightning.profiler import SimpleProfiler, AbstractProfiler, AdvancedProfiler, PyTorchProfiler
 from pytorch_lightning.loggers import TensorBoardLogger
 
 assert torch.cuda.is_available(), "Requires CUDA to train"
@@ -230,14 +230,14 @@ def build_callbacks(
             monitor="val_loss",
             dirpath=os.path.join(outdir, "models/best_by_valid"),
             save_top_k=5,
-            save_weights_only=True,
+            save_weights_only=False,
             mode="min",
         ),
         pl.callbacks.ModelCheckpoint(
             monitor="train_loss",
             dirpath=os.path.join(outdir, "models/best_by_train"),
             save_top_k=5,
-            save_weights_only=True,
+            save_weights_only=False,
             mode="min",
         ),
         pl.callbacks.LearningRateMonitor(logging_interval="epoch"),
@@ -277,6 +277,7 @@ def record_args_and_metadata(func_args: Dict[str, Any], results_folder: Path):
             logging.info(f"Training argument: {k}={v}")
 
     # Record current Git version
+    '''
     try:
         import git
 
@@ -293,7 +294,7 @@ def record_args_and_metadata(func_args: Dict[str, Any], results_folder: Path):
         logging.warning(
             f"Could not determine Git repo status -- GitPython is not installed"
         )
-
+    '''
 
 def train(
     # Controls output
@@ -485,9 +486,9 @@ def train(
 
     logging.info(f"Using {accelerator} with strategy {strategy}")
     # start=================================lvying================================
-    print("model=",model)
-    model_size = pl.utilities.memory.get_model_size_mb(model)
-    print("model_size = {} M \n".format(model_size))
+   #print("model=",model)
+   # model_size = pl.utilities.memory.get_model_size_mb(model)
+   # print("model_size = {} M \n".format(model_size))
     
 
     # end=================================lvying================================
@@ -504,29 +505,30 @@ def train(
         log_every_n_steps=min(1, len(train_dataloader)),  # Log >= once per epoch
         accelerator=accelerator,
         strategy=strategy,
-        gpus=7,
+        gpus=8,
         enable_progress_bar=False,
         move_metrics_to_cpu=False,  # Saves memory
+       # detect_anomaly=True
      #   profiler=profiler,
-        amp_backend='apex',  
-        amp_level = 'O1'    
+      #  amp_backend='apex',  
+     #   amp_level = 'O1'    
     )
    # print("=================================LvYing testing================================")
     print("++++++++++++++++++++++++++++++++++++model framework++++++++++++++++++++++++++++++++++++++")
-    temp_idx = 0
-    for name, param in model.named_parameters():
-        if not param.requires_grad:
-           continue
-        if param.grad is None:
-           print(temp_idx,name)
-           temp_idx = temp_idx+1
+    #temp_idx = 0
+    #for name, param in model.named_parameters():
+     #   if not param.requires_grad:
+      #     continue
+       # if param.grad is None:
+        #   print(temp_idx,name)
+         #  temp_idx = temp_idx+1
   #  print("++++++++++++++++++++++++++++++++++++model framework++++++++++++++++++++++++++++++++++++++")
-    print(train_dataloader.batch_size)
-    print(valid_dataloader.batch_size)
+    #print(train_dataloader.batch_size)
+   # print(valid_dataloader.batch_size)
    # data_iter = iter(train_dataloader)
     
    # print(next(data_iter))
-
+    torch.autograd.set_detect_anomaly(True)
     
     trainer.fit(
         model=model,
@@ -614,7 +616,7 @@ def main():
             "subset": args.toy,
             "single_timestep_debug": args.debug_single_time,
             "cpu_only": args.cpu,
-            "ngpu": 7,
+            "ngpu": 8,
             "dryrun": args.dryrun,
         },
     )    

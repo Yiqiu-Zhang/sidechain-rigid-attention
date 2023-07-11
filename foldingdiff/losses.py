@@ -188,7 +188,7 @@ def square_chi_loss(
 #=======================================new loss=========================================
 def square_chi_loss_with_periodic(
     pred_chi_sin_cos: torch.Tensor, # [b,L,4,2]
-    true_chi: torch.Tensor,# [b,L,4]
+    true_chi_sin_cos: torch.Tensor,# [b,L,4,2]
     restype_idx: torch.Tensor, # [b,L] restpyes in number
     chi_mask: torch.Tensor, # [b,L,4]
 
@@ -206,10 +206,6 @@ def square_chi_loss_with_periodic(
     )
     #[B, L, 4, 1]
     symmetric_shift = (1 - 2 * chi_pi_periodic).unsqueeze(-1)
-
-    true_chi_sin = torch.sin(true_chi)
-    true_chi_cos = torch.cos(true_chi)
-    true_chi_sin_cos = torch.stack([true_chi_sin, true_chi_cos], dim=-1)
 
     assert pred_chi_sin_cos.shape == true_chi_sin_cos.shape, \
         f"Mismatched shapes: {pred_chi_sin_cos.shape} != {true_chi_sin_cos.shape}"

@@ -4,13 +4,60 @@ import math
 import numpy as np
 import pandas as pd
 import torch.nn.functional as F
+import constant
+AA_TO_ID = {
+    'A': 0,
+    'B': 2,
+    'C': 1,
+    'D': 2,
+    'E': 3,
+    'F': 4,
+    'G': 5,
+    'H': 6,
+    'I': 7,
+    'J': 20,
+    'K': 8,
+    'L': 9,
+    'M': 10,
+    'N': 11,
+    'O': 20,
+    'P': 12,
+    'Q': 13,
+    'R': 14,
+    'S': 15,
+    'T': 16,
+    'U': 1,
+    'V': 17,
+    'W': 18,
+    'X': 20,
+    'Y': 19,
+    'Z': 3,
+}
 
-
-
-restypes = ['A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K', 'M', 'F', 'P',
-            'S', 'T', 'W', 'Y', 'V', 'X'] # with the UNK residue
-
-AA_TO_ID = {restype: i for i, restype in enumerate(restypes)}
+# Partial inversion of HHBLITS_AA_TO_ID.
+ID_TO_HHBLITS_AA = {
+    0: "A",
+    1: "C",  # Also U.
+    2: "D",  # Also B.
+    3: "E",  # Also Z.
+    4: "F",
+    5: "G",
+    6: "H",
+    7: "I",
+    8: "K",
+    9: "L",
+    10: "M",
+    11: "N",
+    12: "P",
+    13: "Q",
+    14: "R",
+    15: "S",
+    16: "T",
+    17: "V",
+    18: "W",
+    19: "Y",
+    20: "X",  # Includes J and O.
+}
 
 
 ANGLES = ["X1", "X2", "X3","X4"]
@@ -149,7 +196,6 @@ def acid_to_number(seq, mapping):
     return num_list
 
 def get_torsion_seq(pdb_path):
-   # print("===================pdb_path===========================",pdb_path)
     torsion_list = []
     chi_mask =[]
     seq = []
@@ -160,10 +206,11 @@ def get_torsion_seq(pdb_path):
     X = []
     removelist = []
     for res in chain:
-        if res.id[0] != " ":
+        if res.id[0] != " " and res.resname != 'UNK':
             removelist.append(res.id)
     for id in removelist:
         chain.detach_child(id)
+
     L = len(chain)
     rigid_type = np.zeros((L,5))
     rigid_type_mask = np.zeros((L,5))
@@ -173,7 +220,6 @@ def get_torsion_seq(pdb_path):
 
         chi_list = [0] * 4
         temp_mask =[0] * 4
-        
 
         res_name = res.resname
         seq.append(restype_3to1[res_name])
@@ -200,7 +246,7 @@ def get_torsion_seq(pdb_path):
     #=========
     seq_single = np.array(seq, dtype=np.str)
     
-    num_acid_seq = acid_to_number(seq_single, AA_TO_ID)
+    num_acid_seq = acid_to_number(seq_single, constant.restype_to_ID)
     num_acid_seq = np.array(num_acid_seq)
     
     X1 = torsion_list[:,0]
@@ -211,7 +257,7 @@ def get_torsion_seq(pdb_path):
     angle_list = pd.DataFrame({k: calc_angles[k].squeeze() for k in ANGLES})
 
     rigid_type = torch.tensor(rigid_type, dtype=torch.int64)
-    rigid_type_onehot = F.one_hot(rigid_type,20)  # with the empty rigid type 0 
+    rigid_type_onehot = F.one_hot(rigid_type,20)  # with the empty rigid type 0
     rigid_type_onehot = rigid_type_onehot * torch.unsqueeze(torch.tensor(rigid_type_mask), -1)
 
     rigid_type_onehot = np.array(rigid_type_onehot) #(L,5,20)
@@ -220,7 +266,7 @@ def get_torsion_seq(pdb_path):
                    'coords': X,
                    'seq': num_acid_seq,
                    "seq_temp": seq_single,
-                   "chi_mask": chi_mask, # [L,4]
+                   "chi_mask": chi_mask,
                    'rigid_type_onehot': rigid_type_onehot, #(L,5,20)
                    'rigid_property': rigid_property, # (L,5,6)
                    'fname': pdb_path,

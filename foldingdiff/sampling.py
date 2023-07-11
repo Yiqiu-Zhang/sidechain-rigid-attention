@@ -122,8 +122,30 @@ def p_sample_x_0(
 
     # Equation 11 in the paper
     # Use our model (noise predictor) to predict the mean
-    model_mean = sqrt_alphas_cumprod_prev_t * betas_t * model(x, coords, seq, t, chi_mask, acid_embedding, rigid_type, rigid_property) / (1 - alphas_cumprod_t) \
+   # print("sqrt_alphas_cumprod_prev_t=",sqrt_alphas_cumprod_prev_t.shape)
+   # print("sqrt_alphas_cumprod_prev_t=",sqrt_alphas_cumprod_prev_t)
+   # print("betas_t=",betas_t.shape)
+   # print("betas_t=",betas_t)
+   # print("alphas_cumprod_t=",alphas_cumprod_t.shape)
+   # print("alphas_cumprod_t=",alphas_cumprod_t)
+   # print("sqrt_alpha_t=",sqrt_alpha_t.shape)
+   # print("sqrt_alpha_t=",sqrt_alpha_t)
+   # print(" alphas_cumprod_t=", alphas_cumprod_t.shape)
+   # print(" alphas_cumprod_t=", alphas_cumprod_t)
+   # print(" alphas_cumprod_prev_t=", alphas_cumprod_prev_t.shape)
+   # print(" alphas_cumprod_prev_t=", alphas_cumprod_prev_t)
+    
+    sin_cos = model(x, coords, seq, t, acid_embedding, rigid_type, rigid_property,attn_mask)
+    angles = torch.atan2(sin_cos[...,0],sin_cos[...,1])
+    
+    model_mean = sqrt_alphas_cumprod_prev_t * betas_t * angles / (1 - alphas_cumprod_t) \
                  + sqrt_alpha_t * (1 - alphas_cumprod_prev_t) * x / (1 - alphas_cumprod_t)
+
+
+    #tempoutput = model(x, coords, seq, t, acid_embedding, rigid_type, rigid_property,attn_mask)
+    #print("tempoutput=", angles.shape)
+    #model_mean = sqrt_alphas_cumprod_prev_t * betas_t * model(x, coords, seq, t, acid_embedding, rigid_type, rigid_property,attn_mask) / (1 - alphas_cumprod_t) \
+    #             + sqrt_alpha_t * (1 - alphas_cumprod_prev_t) * x / (1 - alphas_cumprod_t)
 
     if t_index == 0:
         return model_mean
@@ -271,6 +293,7 @@ def sample(
     
     
     for this_lengths in lengths_chunkified:
+        torch.cuda.empty_cache()
         batch = len(this_lengths)
         # Sample noise and sample the lengths
         coords = temp_c.repeat(batch,1,1,1).cuda()
