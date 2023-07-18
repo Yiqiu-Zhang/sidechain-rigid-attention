@@ -24,7 +24,7 @@ def rotate_sidechain(
     default_frame = torch.tensor(restype_rigid_group_default_frame,
                               dtype=angles.dtype,
                               device=angles.device,
-                              requires_grad=True)
+                              requires_grad=False)
     # [*, N, 8, 4, 4]
     res_default_frame = default_frame[restype_idx, ...]
     
@@ -273,6 +273,27 @@ def frame_to_edge(frames: geometry.Rigid, # [*, N_rigid] Rigid
     distance, altered_direction, orientation = frames.edge()
 
     return pair_mask, flat_mask, distance, altered_direction, orientation
+
+
+def update_E_idx(frames: geometry.Rigid,  # [*, N_rigid] Rigid
+                pair_mask: torch.Tensor,  # [*, N_res]
+                top_k: int,
+                ):
+
+
+    # [*, N_rigid, N_rigid]
+    distance, _, _ = frames.edge()
+
+    D = pair_mask * distance
+
+    D_max, _ = torch.max(D, -1, keepdim=True)
+    D_adjust = D + (1. - pair_mask) * D_max  # give masked position value D_max
+
+    # Value of distance [*, N_rigid, K], Index of distance [*, N_rigid, K]
+    _, E_idx = torch.topk(D_adjust, top_k, dim=-1, largest=False)
+
+    return E_idx
+
 
 def write_preds_pdb_file(structure, sampled_dfs, out_path, fname, j):
     
