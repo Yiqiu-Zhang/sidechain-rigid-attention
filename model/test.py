@@ -12,11 +12,15 @@ timesteps = torch.randint(0,1000,(batch,1))
 rigid_type = torch.randn((batch, n_res, 5, 20))
 rigid_property = torch.randn((batch,n_res,5,6))
 pad_mask = torch.randint(0,1, (batch,n_res))
+ture_angles = torch.randn((batch,n_res,4))
+diffusion_mask = torch.randint(0,1, (batch,n_res,1)) == 1
 
 model = RigidDiffusion()
 run = model.forward(side_chain_angles,
+                    ture_angles,
                     backbone_coords,
                     seq_idx,
+                    diffusion_mask,
                     timesteps,
                     seq_esm,
                     rigid_type,

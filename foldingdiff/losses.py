@@ -188,10 +188,12 @@ def square_chi_loss(
 #=======================================new loss=========================================
 def square_chi_loss_with_periodic(
     pred_chi_sin_cos: torch.Tensor, # [b,L,4,2]
+    unnormalized_angles_sin_cos: torch.Tensor,
     true_chi_sin_cos: torch.Tensor,# [b,L,4,2]
     restype_idx: torch.Tensor, # [b,L] restpyes in number
-    chi_mask: torch.Tensor, # [b,L,4]
-
+    mask: torch.Tensor, # [b,L,4]
+    angle_norm_weight: float = 0.02,
+    eps = 1e-6,
 ) -> torch.Tensor:
 
 
@@ -213,14 +215,23 @@ def square_chi_loss_with_periodic(
     sq_chi_error = torch.sum((true_chi_sin_cos - pred_chi_sin_cos)**2, dim=-1)
 
     # Now calculate symmetric chi error
-    symmetric_noise = symmetric_shift * true_chi_sin_cos
+    symmetric_noise = symmetric_shift * true_chi_sin_cos # 对称的角度，sin cos 全部变为 -sin -cos
     symmetric_error = torch.sum((symmetric_noise - pred_chi_sin_cos)**2, dim=-1)
 
     sq_chi_error = torch.minimum(sq_chi_error, symmetric_error)
 
-    sq_chi_loss = mask_mean(chi_mask, sq_chi_error,dim=( -2, -3))
+    sq_chi_loss = mask_mean(mask, sq_chi_error,dim=( -2, -3))
 
-    return sq_chi_loss
+    # [*, N, 4]
+    angle_norm = torch.sqrt(
+        torch.sum(unnormalized_angles_sin_cos ** 2, dim=-1) + eps
+    )
+    norm_error = torch.abs(angle_norm - 1.0)
+
+    angle_norm_loss = mask_mean(mask, norm_error, dim=(-2, -3))
+
+    return sq_chi_loss + angle_norm_weight * angle_norm_loss
+
 #=======================================new loss=========================================
 
 def main():

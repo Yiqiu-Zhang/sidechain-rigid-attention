@@ -53,7 +53,7 @@ def get_timestep_embedding(timesteps, embedding_dim, max_positions=10000):
     timesteps = timesteps * max_positions
     half_dim = embedding_dim // 2
     emb = math.log(max_positions) / (half_dim - 1)
-    emb = torch.exp(torch.arange(half_dim, dtype=torch.float32, device=timesteps.device) * -emb)
+    emb = torch.exp(torch.arange(half_dim, device=timesteps.device) * -emb)
     emb = timesteps.float()[:, None] * emb[None, :]
     emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
     if embedding_dim % 2 == 1:  # zero pad
@@ -199,8 +199,9 @@ class InputEmbedder(nn.Module):
         return d # [B, N_rigid, N_rigid, relpos_k + 10]
 
     def forward(self,
-        noised_angles: torch.Tensor, #[batch,128,4]
+        #noised_angles: torch.Tensor, #[batch,128,4]
         seq_esm: torch.Tensor, #[batch,128,320]
+        diffusion_mask: torch.Tensor, #[batch,128,1]
         rigid_type: torch.Tensor, #[batch,128,5,20]
         rigid_property: torch.Tensor, #[batch,128,5,6]
 
@@ -228,7 +229,16 @@ class InputEmbedder(nn.Module):
         # sin_cos = torch.cat((torch.sin(noised_angles), torch.cos(noised_angles)), -1)
         # expand_angle = sin_cos.repeat(1,1,5).reshape(batch_size, -1, sin_cos.shape[-1])
 
-        node_time = torch.tile(get_timestep_embedding(timesteps.squeeze(dim=-1), self.c_n)[:, None, :], (1, n_rigid, 1))
+        # [batch, N_res, 5]
+        expand_diffusion_mask =  diffusion_mask.repeat(1,1,5)
+        expand_diffusion_mask[...,1] = False
+        # [batch, N_rigid, c_n/2]
+        expand_diffusion_mask = expand_diffusion_mask.reshape(batch_size, -1, 1).repeat(1,1,self.c_n//2)
+        mask_time = torch.cat([torch.sin(expand_diffusion_mask), torch.cos(expand_diffusion_mask)], dim=-1)
+        node_time = torch.tile(
+            get_timestep_embedding(timesteps.squeeze(dim=-1), self.c_n)[:, None, :], (1, n_rigid, 1))
+        node_time = torch.where(expand_diffusion_mask.repeat(1,1,2), node_time, mask_time)
+
 
         '''#关掉pair-time
         pair_time = torch.tile(get_timestep_embedding(timesteps.squeeze(dim=-1), self.c_z)[:, None, None, :], (1, n_rigid, n_rigid, 1))
@@ -967,16 +977,16 @@ class AngleResnet(nn.Module):
 
         # [*, N_res, no_angles * 2]
         s = self.linear_out(s)
-      #  print("============s==================",s.shape)
 
         # [*, N_res, no_angles, 2]
         s = s.view(s.shape[:-1] + (-1, 2))
-      #  print("============s==================",s.shape)
+
+        unnormalized_s = s
         norm_denom = torch.sqrt(
             torch.clamp(torch.sum(s ** 2, dim=-1, keepdim=True),min=self.eps)
         )      
         s = s / norm_denom     
-        return s
+        return s, unnormalized_s
 
 class AngleResnetBlock(nn.Module):
     def __init__(self, c_hidden):
@@ -1065,7 +1075,9 @@ class StructureUpdateModule(nn.Module):
                 rigids,
                 rigid_mask,
                 pair_mask,
-                E_idx
+                E_idx,
+                ture_angles_sin_cos,
+                diffusion_mask
                 ):
 
         #node_emb = torch.clone(init_node_emb)
@@ -1074,7 +1086,9 @@ class StructureUpdateModule(nn.Module):
 
             pair_emb = self.edge_transition(node_emb, pair_emb) * pair_mask.unsqueeze(-1)
 
-            updated_chi_angles = self.angle_resnet(node_emb)
+            updated_chi_angles, unnormalized_chi_angles = self.angle_resnet(node_emb)
+
+            updated_chi_angles = torch.where(diffusion_mask[...,None], updated_chi_angles, ture_angles_sin_cos)
 
             E_idx = structure_build.update_E_idx(rigids, pair_mask, self.top_k)
             
@@ -1085,7 +1099,7 @@ class StructureUpdateModule(nn.Module):
             
             rigids = rigids * rigid_mask
 
-        return updated_chi_angles
+        return updated_chi_angles, unnormalized_chi_angles
 
 class StructureBlock(nn.Module):
     def __init__(self,
@@ -1151,7 +1165,7 @@ class RigidDiffusion(nn.Module):
                  # InputEmbedder config
                  nf_dim: int = 6 + 20 + 320,
                  c_n: int = 384, # Node channel dimension after InputEmbedding
-                 relpos_k: int = 32, # relative position neighbour range
+                 relpos_k: int = 16, # relative position neighbour range
                  edge_type: int = 10,
 
                  # PairEmbedder parameter
@@ -1178,7 +1192,7 @@ class RigidDiffusion(nn.Module):
 
                  no_rigid: int = 5,
 
-                 top_k: int =64,
+                 top_k: int =2,
                  ):
 
         super(RigidDiffusion, self).__init__()
@@ -1229,8 +1243,10 @@ class RigidDiffusion(nn.Module):
 
     def forward(self,
                 side_chain_angles,
+                ture_angles,
                 backbone_coords,
                 seq_idx,
+                diffusion_mask,
                 timesteps,
                 seq_esm,
                 rigid_type,
@@ -1238,12 +1254,12 @@ class RigidDiffusion(nn.Module):
                 pad_mask,
         ):
   
-        
-        
 
         # [*, N_rigid, 4, 2]
         angles_sin_cos = torch.stack([torch.sin(side_chain_angles), torch.cos(side_chain_angles)], dim=-1)
         # [*, N_rigid] Rigid
+        ture_angles_sin_cos = torch.stack([torch.sin(ture_angles), torch.cos(ture_angles)], dim=-1)
+
         rigids = structure_build.torsion_to_frame(seq_idx,
                                                  backbone_coords,
                                                  angles_sin_cos)  # add attention #frame
@@ -1253,26 +1269,29 @@ class RigidDiffusion(nn.Module):
         E_idx = structure_build.update_E_idx(rigids, pair_mask, self.top_k)
 
         # [*, N_rigid, c_n], [*, N_rigid, N_rigid, c_z]
-        node_emb, pair_emb = self.input_embedder(side_chain_angles,
-                                                  seq_esm,
-                                                  rigid_type,
-                                                  rigid_property,
-                                                #  distance,
-                                                #  altered_direction,
-                                                 # orientation,
-                                                  rigid_mask,
-                                                  pair_mask,
-                                                  timesteps)
+        node_emb, pair_emb = self.input_embedder(#side_chain_angles,
+                                                seq_esm,
+                                                diffusion_mask,
+                                                rigid_type,
+                                                rigid_property,
+                                              # distance,
+                                              # altered_direction,
+                                              # orientation,
+                                                rigid_mask,
+                                                pair_mask,
+                                                timesteps)
           
         # [*, N_res, c_n * 5]      
-        pred_chi_sin_cos = self.structure_update(seq_idx,
-                                        backbone_coords,
-                                        node_emb,
-                                        pair_emb,
-                                        rigids,
-                                        rigid_mask,
-                                        pair_mask,
-                                        E_idx)
+        pred_chi_sin_cos, unnormalized_chi_angles = self.structure_update(seq_idx,
+                                                                        backbone_coords,
+                                                                        node_emb,
+                                                                        pair_emb,
+                                                                        rigids,
+                                                                        rigid_mask,
+                                                                        pair_mask,
+                                                                        E_idx,
+                                                                        ture_angles_sin_cos,
+                                                                        diffusion_mask)
 
         # Reshape N_rigid into N_res 这里其实一直没有好好写， 这五个rigid的表示直接被拼起来就用来预测角度了，这里是不是应该换一种方法？
         # 直接放到 IPA 里面怎么样
@@ -1282,5 +1301,6 @@ class RigidDiffusion(nn.Module):
         # noise = self.noise_predictor_sincos(node_emb, init_node_emb)
 
         #  noise = self.noise_predictor(node_emb, init_node_emb)
-        return pred_chi_sin_cos
+        return pred_chi_sin_cos, unnormalized_chi_angles
+
 

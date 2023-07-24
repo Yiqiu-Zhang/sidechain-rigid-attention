@@ -13,7 +13,7 @@ class Rotation:
         if rot_mats is None:
             raise ValueError('rot matrix must be specified')
         else:
-            rot_mats = rot_mats.to(dtype=torch.float32)
+            rot_mats = rot_mats
 
         self._rot_mats = rot_mats
 

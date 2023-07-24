@@ -456,10 +456,10 @@ atom_order = {atom_type: i for i, atom_type in enumerate(atom_types)}
 # and compute affine transformation matrices (4,4) from one rigid group to the
 # previous group
 restype_atom14_to_rigid_group = np.zeros([21, 14], dtype=int)
-restype_atom14_mask = np.zeros([21, 14], dtype=np.float32)
-restype_atom14_rigid_group_positions = np.zeros([21, 14, 3], dtype=np.float32)
-restype_rigid_group_default_frame = np.zeros([21, 8, 4, 4], dtype=np.float32)
-restype_atom37_mask = np.zeros([21, 37], dtype=np.float32)
+restype_atom14_mask = np.zeros([21, 14])
+restype_atom14_rigid_group_positions = np.zeros([21, 14, 3])
+restype_rigid_group_default_frame = np.zeros([21, 8, 4, 4])
+restype_atom37_mask = np.zeros([21, 37])
 
 def make_rigid_trans(ex, y_vec, t):
     """Create rigid rotation and translation matrix with the given axis and translation vec

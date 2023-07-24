@@ -2,6 +2,7 @@
 Modelling
 """
 import os
+import random
 import re
 import shutil
 import time
@@ -385,9 +386,11 @@ class AngleDiffusionBase(nn.Module):
 
     def forward(
         self,
-        side_chain_angles: torch.Tensor, #[batch,128,4]
+        corrupted_angles: torch.Tensor, #[batch,128,4]
+        angles: torch.Tensor, #[batch,128,4]
         backbone_coords: torch.Tensor, #[batch,128,4,3]
         seq_idx: torch.Tensor,#[batch,128,4]
+        diffusion_mask: torch.Tensor, #[batch,128,4]
         timestep: torch.Tensor, 
         x_seq_esm: torch.Tensor,  #[batch,128,1024]
         x_rigid_type: torch.Tensor, #[batch,128,5,20] x_rigid_type[-1]=one hot
@@ -399,24 +402,28 @@ class AngleDiffusionBase(nn.Module):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ):
-        input_shape = side_chain_angles.size()
+        input_shape = corrupted_angles.size()
         batch_size, seq_length, *_ = input_shape
         logging.debug(f"Detected batch {batch_size} and seq length {seq_length}")
 
        
-        assert len(side_chain_angles.shape) == 3  # batch_size, seq_length, features
+        assert len(corrupted_angles.shape) == 3  # batch_size, seq_length, features
 
-        output = self.encoder(side_chain_angles,
+        output, unnormalized_chi_angles= self.encoder(
+                              corrupted_angles,
+                              angles,
                               backbone_coords,
                               seq_idx,
+                              diffusion_mask,
                               timestep,
                               x_seq_esm,
                               x_rigid_type, 
                               x_rigid_proterty,
                               pad_mask,
+                              """sc_angle,"""
         ) 
       #  print("===========output==========",output.shape)
-        return output
+        return output, unnormalized_chi_angles
 
 class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
     """
@@ -433,6 +440,7 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         circle_reg: float = 0.0,
         epochs: int = 10,
         steps_per_epoch: int = 250,  # Dummy value
+        diffusion_fraction: float = 0.7,
         lr_scheduler: LR_SCHEDULE = None,
         write_preds_to_dir: Optional[str] = None,
         **kwargs,
@@ -441,6 +449,7 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         """Feed args to BertForDiffusionBase and then feed the rest into"""
         AngleDiffusionBase.__init__(self, **kwargs)
         # Store information about leraning rates and loss
+        self.diffusion_fraction = diffusion_fraction
         self.learning_rate = lr
         # loss function is either a callable or a list of callables
         if isinstance(loss, str):
@@ -631,44 +640,71 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
     #=======================================new loss=========================================
     
     def _get_loss_terms_changed(
-        self, batch: torch.Tensor,
+        self,
+        batch: torch.Tensor,
         write_preds: Optional[str] = None
     ) -> torch.Tensor:
         """
         Returns the loss terms for the model. Length of the returned list
         is equivalent to the number of features we are fitting to.
         """
+
         angles = batch["angles"]
+
+        diffusion_mask = torch.rand(angles.shape[:-1]) < self.diffusion_fraction
+        diffusion_mask = diffusion_mask[...,None]
+        corrupted_angles = torch.where(diffusion_mask, batch["corrupted"], batch["angles"])
 
         true_chi_sin = torch.sin(angles)
         true_chi_cos = torch.cos(angles)
         true_chi_sin_cos = torch.stack([true_chi_sin, true_chi_cos], dim=-1)
-    
-        predicted_angle_sin_cos = self.forward(
-            batch["corrupted"],  #[batch,128,4]
+
+        """
+        sc_angle = None
+
+        # With 50% chance, sc_angle are calculated
+        if random.Random() < 0.5:
+            with torch.no_grad():
+                # we dont need input sc_angle here cause it is initially set to None
+                sc_angle = self.forward(
+                    batch["corrupted"],  #[batch,128,4]
+                    batch["coords"], #[batch,128,4,3]
+                    batch["seq"], #[batch,128,4]
+                    batch["t"],
+                    batch["acid_embedding"],  #[batch,128,1024]
+                    batch['rigid_type_onehot'], #[batch,128,5,19] x_rigid_type[-1]=one hot
+                    batch['rigid_property'], #[batch,128,5,6]
+                    batch["attn_mask"],)
+
+        """
+
+        predicted_angle_sin_cos, unnormalized_chi_angles = self.forward(
+            corrupted_angles,  #[batch,128,4]
+            batch["angles"],
             batch["coords"], #[batch,128,4,3]
             batch["seq"], #[batch,128,4]
-            batch["t"], 
+            diffusion_mask, #[batch,128,1]
+            batch["t"],
             batch["acid_embedding"],  #[batch,128,1024]
             batch['rigid_type_onehot'], #[batch,128,5,19] x_rigid_type[-1]=one hot
             batch['rigid_property'], #[batch,128,5,6]
             batch["attn_mask"],
+
+            """sc_angle,"""
         )
-        #print("=========================predicted_angle_sin_cos======================",predicted_angle_sin_cos)
-        #if torch.isnan(predicted_angle_sin_cos).any():
-        #    print("predicted_angle_sin_cos张量包含NaN")
-        #    raise ValueError("predicted_angle_sin_cos)数据中包含 NaN，请中断程序执行") 
-        #print("======true_chi_sin_cos.shape========",true_chi_sin_cos.shape)
-       # print("======predicted_angle_sin_cos.shape========",predicted_angle_sin_cos.shape)
+
         assert (true_chi_sin_cos.shape == predicted_angle_sin_cos.shape), f"{true_chi_sin_cos.shape} != {predicted_angle_sin_cos.shape}"
 
         loss_fn = self.angular_loss_fn_dict['square_chi_loss_with_periodic']
+        mask = batch['chi_mask'] * diffusion_mask
         loss_terms = loss_fn(
             predicted_angle_sin_cos,
+            unnormalized_chi_angles,
             true_chi_sin_cos,
             batch['seq'],  # [b,L] restpyes in number
-            batch['chi_mask'],  # [b,L,4]  Padded in chi_mask so no need to use padding mask
+            mask,  # [b,L,4]  Padded in chi_mask so no need to use padding mask
         )
+
         if write_preds is not None:
             with open(write_preds, "w") as f:
                 d_to_write = {
@@ -687,10 +723,7 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
         Training step, runs once per batch
         """
        # torch.autograd.set_detect_anomaly(True)
-        #=======================================new loss=========================================
-        # avg_loss = self._get_loss_terms_changed(batch) 
-        #=======================================new loss=========================================
-        
+
         #print("=================================",batch["chi_mask"].shape)
         loss_terms = self._get_loss_terms_changed(batch)
         
