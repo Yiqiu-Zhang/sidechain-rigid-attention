@@ -203,7 +203,62 @@ class Rigid:
         s = self.trans.shape[:-1]
         return s
 
+    @staticmethod
+    def from_3_points(
+        p_neg_x_axis: torch.Tensor,
+        origin: torch.Tensor,
+        p_xy_plane: torch.Tensor,
+        eps: float = 1e-8
+    ) -> Rigid:
+        """
+            Implements algorithm 21. Constructs transformations from sets of 3
+            points using the Gram-Schmidt algorithm.
 
+            Args:
+                p_neg_x_axis: [*, 3] coordinates
+                origin: [*, 3] coordinates used as frame origins
+                p_xy_plane: [*, 3] coordinates
+                eps: Small epsilon value
+            Returns:
+                A transformation object of shape [*]
+        """
+        p_neg_x_axis = torch.unbind(p_neg_x_axis, dim=-1)
+        origin = torch.unbind(origin, dim=-1)
+        p_xy_plane = torch.unbind(p_xy_plane, dim=-1)
+
+        e0 = [c1 - c2 for c1, c2 in zip(origin, p_neg_x_axis)]
+        e1 = [c1 - c2 for c1, c2 in zip(p_xy_plane, origin)]
+
+        denom = torch.sqrt(sum((c * c for c in e0)) + eps)
+        e0 = [c / denom for c in e0]
+        dot = sum((c1 * c2 for c1, c2 in zip(e0, e1)))
+        e1 = [c2 - c1 * dot for c1, c2 in zip(e0, e1)]
+        denom = torch.sqrt(sum((c * c for c in e1)) + eps)
+        e1 = [c / denom for c in e1]
+        e2 = [
+            e0[1] * e1[2] - e0[2] * e1[1],
+            e0[2] * e1[0] - e0[0] * e1[2],
+            e0[0] * e1[1] - e0[1] * e1[0],
+        ]
+
+        rots = torch.stack([c for tup in zip(e0, e1, e2) for c in tup], dim=-1)
+        rots = rots.reshape(rots.shape[:-1] + (3, 3))
+
+        rot_obj = Rotation(rot_mats=rots)
+
+        return Rigid(rot_obj, torch.stack(origin, dim=-1))
+
+    def invert(self) -> Rotation:
+        """
+            Returns the inverse of the current Rotation.
+
+            Returns:
+                The inverse of the current Rotation
+        """
+        if(self.rot_mats is not None):
+            return Rotation(
+                rot_mats=invert_rot_mat(self.rot_mats),
+            )
 
 def from_tensor_4x4(t: torch.Tensor) -> Rigid:
     """
@@ -278,10 +333,10 @@ def invert_rot_mul_vec(rigid: Rigid,
     """
     rot_mats = rigid.rot.get_rot_mat()
     inv_rot_mats = rot_mats.transpose(-1, -2)
-
+    inv_trans = rot_vec(inv_rot_mats, rigid.trans)
     rotated = rot_vec(inv_rot_mats, vec)
 
-    return rotated
+    return rotated - inv_trans
 
 def rot_matmul(
     a: torch.Tensor,

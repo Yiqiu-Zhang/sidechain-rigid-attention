@@ -1272,13 +1272,14 @@ class NoisedAnglesDataset(Dataset):
         fig.savefig(fname, bbox_inches="tight")
         return fname
 
+
     def sample_noise(self, vals: torch.Tensor) -> torch.Tensor:
         """
         Adaptively sample noise based on modulo. We scale only the variance because
         we want the noise to remain zero centered
         """
         # Noise is always 0 centered
-        noise = torch.randn_like(vals)
+        noise = torch.randn_like(vals) # [b,n,f]
 
         # Shapes of vals couled be (batch, seq, feat) or (seq, feat)
         # Therefore we need to index into last dimension consistently
@@ -1301,6 +1302,7 @@ class NoisedAnglesDataset(Dataset):
 
         return noise
 
+    '''
     def __getitem__(
         self,
         index: int,
@@ -1392,7 +1394,96 @@ class NoisedAnglesDataset(Dataset):
             item.update(retval)
             return item
         return retval
+    '''
 
+    def __getitem__(
+            self,
+            index: int,
+            sigma_min= 0.01 * np.pi,
+            sigma_max=np.pi,
+            use_t_val: Optional[int] = None,
+            ignore_zero_center: bool = False,
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Gets the i-th item in the dataset and adds noise
+        use_t_val is useful for manually querying specific timepoints
+        """
+        assert 0 <= index < len(self), f"Index {index} out of bounds for {len(self)}"
+        # Handle cases where we exhaustively loop over t
+        if self.exhaustive_timesteps:
+            item_index = index // self.timesteps
+            assert item_index < len(self.dset)
+            time_index = index % self.timesteps
+            logging.debug(
+                f"Exhaustive {index} -> item {item_index} at time {time_index}"
+            )
+            assert (
+                    item_index * self.timesteps + time_index == index
+            ), f"Unexpected indices for {index} -- {item_index} {time_index}"
+            item = self.dset.__getitem__(
+                item_index, ignore_zero_center=ignore_zero_center
+            )
+        else:
+            item = self.dset.__getitem__(index, ignore_zero_center=ignore_zero_center)
+
+        # If wrapped dset returns a dictionary then we extract the item to noise
+        if self.dset_key is not None:
+            assert isinstance(item, dict)
+            vals = item[self.dset_key].clone() # item["angle"]
+        # print("============self.dset_key is not None==================",vals)
+        else:
+            vals = item.clone()
+        #  print("===========else===================",vals)
+        assert isinstance(
+            vals, torch.Tensor
+        ), f"Using dset_key {self.dset_key} - expected tensor but got {type(vals)}"
+
+        # Sample a random timepoint and add corresponding noise
+        if use_t_val is not None:
+            assert (
+                not self.exhaustive_timesteps
+            ), "Cannot use specific t in exhaustive mode"
+            t_val = np.clip(np.array([use_t_val]), 0, self.timesteps - 1)
+            t = torch.from_numpy(t_val).long()
+        elif self.exhaustive_timesteps:
+            t = torch.tensor([time_index]).long()  # list to get correct shape
+        else:
+            t = torch.randint(0, self.timesteps, (1,)).long()
+            print('sigma calculating check==============================================================')
+            # [0, pi]
+            sigma = np.exp(np.random.uniform(low=np.log(sigma_min), high=np.log(sigma_max)))
+            sigma = torch.tensor(sigma)
+
+        # Get the values for alpha and beta
+        sqrt_alphas_cumprod_t = self.alpha_beta_terms["sqrt_alphas_cumprod"][t.item()]
+        sqrt_one_minus_alphas_cumprod_t = self.alpha_beta_terms[
+            "sqrt_one_minus_alphas_cumprod"
+        ][t.item()]
+
+        # Noise is sampled within range of [-pi, pi], and optionally
+        # shifted to [0, 2pi] by adding pi
+        noise = torch.normal(0, sigma, size=vals.shape) # Vals passed in only for shape
+
+        # Add noise and ensure noised vals are still in range
+        noised_vals = vals + noise
+
+        assert noised_vals.shape == vals.shape, f"Unexpected shape {noised_vals.shape}"
+
+        retval = {
+            "corrupted": noised_vals,
+            "t": sigma,
+            "known_noise": noise,
+            "sqrt_alphas_cumprod_t": sqrt_alphas_cumprod_t,
+            "sqrt_one_minus_alphas_cumprod_t": sqrt_one_minus_alphas_cumprod_t,
+        }  # // double check
+
+        # Update dictionary if wrapped dset returns dicts, else just return
+        if isinstance(item, dict):
+            assert item.keys().isdisjoint(retval.keys())
+            item.update(retval)
+            return item
+
+        return retval
 
 class SingleNoisedAngleDataset(NoisedAnglesDataset):
     """

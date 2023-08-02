@@ -243,9 +243,9 @@ def score_loss(predicted_score: torch.Tensor, # [B,N,4]
     # Without calculating the pi_periodic!!!!!!!!!!!!!!!!!!!
     assert len(sigma.shape) == 2
     # [B,N,4]
-    score =torus.score(known_noise, sigma[...,None])
+    score =torus_score.score(known_noise, sigma[...,None])
 
-    score_norm = torus.score_norm(sigma)
+    score_norm = torus_score.score_norm(sigma)
     loss = mask_mean(mask,
                      (score - predicted_score) ** 2 / score_norm[...,None],
                      dim=(-2, -3))

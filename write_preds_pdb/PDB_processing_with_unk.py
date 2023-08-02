@@ -5,34 +5,11 @@ import numpy as np
 import pandas as pd
 import torch.nn.functional as F
 import constant
-AA_TO_ID = {
-    'A': 0,
-    'B': 2,
-    'C': 1,
-    'D': 2,
-    'E': 3,
-    'F': 4,
-    'G': 5,
-    'H': 6,
-    'I': 7,
-    'J': 20,
-    'K': 8,
-    'L': 9,
-    'M': 10,
-    'N': 11,
-    'O': 20,
-    'P': 12,
-    'Q': 13,
-    'R': 14,
-    'S': 15,
-    'T': 16,
-    'U': 1,
-    'V': 17,
-    'W': 18,
-    'X': 20,
-    'Y': 19,
-    'Z': 3,
-}
+
+
+restypes = ['A', 'R', 'N', 'D', 'C', 'Q', 'E', 'G', 'H', 'I', 'L', 'K', 'M', 'F', 'P',
+            'S', 'T', 'W', 'Y', 'V', 'X'] # with the UNK residue
+AA_TO_ID = {restype: i for i, restype in enumerate(restypes)}
 
 # Partial inversion of HHBLITS_AA_TO_ID.
 ID_TO_HHBLITS_AA = {
@@ -246,7 +223,7 @@ def get_torsion_seq(pdb_path):
     #=========
     seq_single = np.array(seq, dtype=np.str)
     
-    num_acid_seq = acid_to_number(seq_single, constant.restype_to_ID)
+    num_acid_seq = acid_to_number(seq_single, AA_TO_ID)
     num_acid_seq = np.array(num_acid_seq)
     
     X1 = torsion_list[:,0]

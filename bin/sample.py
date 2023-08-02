@@ -391,7 +391,7 @@ def main() -> None:
     os.makedirs(sampled_angles_folder, exist_ok=True)
     outdir_pdb = outdir / "sampled_pdb"
     os.makedirs(outdir_pdb, exist_ok=True)
-    for structure in structures:
+    for structure in structures: # a single data point
         sweep_min_len, sweep_max_len = args.lengths
         if len(structure['seq'])>128:
             print('length>128')
@@ -422,7 +422,7 @@ def main() -> None:
             s.to_csv(sampled_angles_folder / f"{pdbname}_generated_{i}.csv.gz")
         j = 0
         for sampled_angle in final_sampled: 
-            write_preds_pdb_file(structure,sampled_angle, outdir_pdb, pdbname, j)
+            write_preds_pdb_file(structure, sampled_angle, outdir_pdb, pdbname, j)
             j = j+1
     #============================================sampling========================================
     

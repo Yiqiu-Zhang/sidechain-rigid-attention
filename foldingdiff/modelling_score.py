@@ -31,8 +31,9 @@ from transformers.optimization import get_linear_schedule_with_warmup
 
 from tqdm.auto import tqdm
 
-from foldingdiff import losses, nerf
-from foldingdiff.datasets import FEATURE_SET_NAMES_TO_ANGULARITY
+from foldingdiff import losses_score as losses
+from foldingdiff import nerf
+from foldingdiff.datasets_score import FEATURE_SET_NAMES_TO_ANGULARITY
 
 #start===================yinglv====================================
 # import graph_transformer
@@ -40,7 +41,8 @@ from graph_transformer.struct2seq import Struct2Seq
 from graph_transformer.self_attention import *
 from graph_transformer.protein_features import *
 #from rigid_attention.rigid_angle_transformer import *
-
+from write_preds_pdb import structure_build_score as structure_build
+from write_preds_pdb import geometry
 import sys
 sys.path.append(r"/mnt/petrelfs/lvying/code/sidechain-rigid-attention_yiqiu/")
 from model import *
@@ -740,9 +742,9 @@ class AngleDiffusion(AngleDiffusionBase, pl.LightningModule):
 
         # [*, N_rigid, 4, 2]
         angles_sin_cos = torch.stack([torch.sin(corrupted_angles), torch.cos(corrupted_angles)], dim=-1)
-        default_r = structure_build.get_default_r(batch["seq"], corrupted_angles)
+        default_r = structure_build_score.get_default_r(batch["seq"], corrupted_angles)
         # [*, N_res] Rigid
-        bb_to_gb = get_gb_trans(batch["coords"])
+        bb_to_gb = geometry.get_gb_trans(batch["coords"])
         # [*, N_rigid] Rigid
         rigids, current_local = structure_build.torsion_to_frame(batch["seq"],
                                                                 bb_to_gb,

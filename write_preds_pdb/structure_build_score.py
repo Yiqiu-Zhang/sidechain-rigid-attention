@@ -17,29 +17,28 @@ import os
 
 device1 = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-def rotate_sidechain(
-                    restype_idx:torch.Tensor, # [*, N]
-                    angles: torch.Tensor, # [*,N,4，2]
-                    last_step_frame: geometry.Rigid,  # [*, N, 8] Rigid
-                    ) -> geometry.Rigid:
 
-    sin_angles = angles[..., 0] # [*,N,4]
+def rotate_sidechain(
+        restype_idx: torch.Tensor,  # [*, N]
+        angles: torch.Tensor,  # [*,N,4，2]
+        last_step_frame: geometry.Rigid,  # [*, N, 8] Rigid
+) -> geometry.Rigid:
+    sin_angles = angles[..., 0]  # [*,N,4]
     cos_angles = angles[..., 1]
 
     # [*,N,4] + [*,N,4] == [*,N,8]
     # adding 4 zero angles which means no change to the default value.
-    #=============================训练时保留，解开注释===================================================#
-    sin_angles = torch.cat([torch.zeros(*restype_idx.shape, 4), sin_angles],dim=-1)
-    cos_angles = torch.cat([torch.ones(*restype_idx.shape, 4), cos_angles],dim=-1)
-    #=============================训练时保留，解开注释===================================================#
+    # =============================训练时保留，解开注释===================================================#
+    sin_angles = torch.cat([torch.zeros(*restype_idx.shape, 4), sin_angles], dim=-1)
+    cos_angles = torch.cat([torch.ones(*restype_idx.shape, 4), cos_angles], dim=-1)
+    # =============================训练时保留，解开注释===================================================#
 
+    # =============================训练时移除，解开注释============================================================#
+    # sin_angles = torch.cat([torch.zeros(*restype_idx.shape, 4), sin_angles],dim=-1)
+    # cos_angles = torch.cat([torch.ones(*restype_idx.shape, 4), cos_angles],dim=-1)
+    # =============================训练时移除，解开注释============================================================#
 
-    #=============================训练时移除，解开注释============================================================#
-    #sin_angles = torch.cat([torch.zeros(*restype_idx.shape, 4), sin_angles],dim=-1)
-    #cos_angles = torch.cat([torch.ones(*restype_idx.shape, 4), cos_angles],dim=-1)
-    #=============================训练时移除，解开注释============================================================#
-
-    #print("sin_angles==",sin_angles.shape)
+    # print("sin_angles==",sin_angles.shape)
 
     # [*, N, 8, 3, 3]
     # Produces rotation matrices of the form:
@@ -51,20 +50,20 @@ def rotate_sidechain(
     # This follows the original code rather than the supplement, which uses
     # different indices.
     all_rots = angles.new_zeros(last_step_frame.rot.get_rot_mat().shape)
-    #print("orign all_rots==",all_rots.shape)
+    # print("orign all_rots==",all_rots.shape)
     all_rots[..., 0, 0] = 1
     all_rots[..., 1, 1] = cos_angles
     all_rots[..., 1, 2] = -sin_angles
     all_rots[..., 2, 1] = sin_angles
     all_rots[..., 2, 2] = cos_angles
 
-    #print("all_rots==",all_rots.shape) # torch.Size([128, 8, 3, 3])
-    #print('Rotation =========',geometry.Rotation(rot_mats = all_rots).shape)
-    all_rots = geometry.Rigid(geometry.Rotation(rot_mats = all_rots), None)
+    # print("all_rots==",all_rots.shape) # torch.Size([128, 8, 3, 3])
+    # print('Rotation =========',geometry.Rotation(rot_mats = all_rots).shape)
+    all_rots = geometry.Rigid(geometry.Rotation(rot_mats=all_rots), None)
 
-    #print("final all_rots==",all_rots.shape) #torch.Size([128])
+    # print("final all_rots==",all_rots.shape) #torch.Size([128])
 
-    #print("default_r==",default_r.shape) #torch.Size([128, 8])
+    # print("default_r==",default_r.shape) #torch.Size([128, 8])
     all_frames = geometry.Rigid_mult(last_step_frame, all_rots)
 
     # Rigid
@@ -79,26 +78,26 @@ def rotate_sidechain(
 
     all_frames_to_bb = geometry.cat(
         [all_frames[..., :5],
-        chi2_frame_to_bb.unsqueeze(-1),
-        chi3_frame_to_bb.unsqueeze(-1),
-        chi4_frame_to_bb.unsqueeze(-1),],
+         chi2_frame_to_bb.unsqueeze(-1),
+         chi3_frame_to_bb.unsqueeze(-1),
+         chi4_frame_to_bb.unsqueeze(-1), ],
         dim=-1,
     )
 
     return all_frames_to_bb, all_frames
 
-def frame_to_pos(frames, aatype_idx):
 
+def frame_to_pos(frames, aatype_idx):
     # [21 , 14]
     group_index = torch.tensor(restype_atom14_to_rigid_group)
 
     # [21 , 14] idx [*, N] -> [*, N, 14]
     group_mask = group_index[aatype_idx, ...]
     # [*, N, 14, 8]
-    group_mask = nn.functional.one_hot(group_mask, num_classes = frames.shape[-1])
+    group_mask = nn.functional.one_hot(group_mask, num_classes=frames.shape[-1])
 
     # [*, N, 14, 8] Rigid frames for every 14 atoms, non exist atom are mapped to group 0
-    map_atoms_to_global = frames[..., None, :] * group_mask # [*, N, :, 8] * [*, N, 14, 8]
+    map_atoms_to_global = frames[..., None, :] * group_mask  # [*, N, :, 8] * [*, N, 14, 8]
 
     # [*, N, 14]
     map_atoms_to_global = geometry.map_rigid_fn(map_atoms_to_global)
@@ -118,47 +117,50 @@ def frame_to_pos(frames, aatype_idx):
 
     return pred_pos
 
+
 def batch_gather(data,  # [N, 14, 3]
-                 indexing): # [N,37]
+                 indexing):  # [N,37]
     ranges = []
 
     N = data.shape[-3]
     r = torch.arange(N)
-   # print("r1========",r.shape)
-    r = r.view(-1,1)
-   # print("r2========",r.shape)
+    # print("r1========",r.shape)
+    r = r.view(-1, 1)
+    # print("r2========",r.shape)
     ranges.append(r)
-   # print("r3========",r.shape)
+    # print("r3========",r.shape)
     remaining_dims = [slice(None) for _ in range(2)]
-   # print("remaining_dims1========",remaining_dims.shape)
+    # print("remaining_dims1========",remaining_dims.shape)
     remaining_dims[-2] = indexing
-   # print("remaining_dims2========",remaining_dims.shape)
-    ranges.extend(remaining_dims)# [Tensor(N,1), Tensor(N,37), slice(None)]
-   # print("ranges========",ranges.shape)
-    return data[ranges] # [N, 37, 3]
+    # print("remaining_dims2========",remaining_dims.shape)
+    ranges.extend(remaining_dims)  # [Tensor(N,1), Tensor(N,37), slice(None)]
+    # print("ranges========",ranges.shape)
+    return data[ranges]  # [N, 37, 3]
 
-def atom14_to_atom37(atom14, aa_idx): # atom14: [*, N, 14, 3]
 
-    restype_atom37_to_atom14 = make_atom14_37_list() #注意有错
+def atom14_to_atom37(atom14, aa_idx):  # atom14: [*, N, 14, 3]
+
+    restype_atom37_to_atom14 = make_atom14_37_list()  # 注意有错
 
     residx_atom37_to_14 = restype_atom37_to_atom14[aa_idx]
     # [N, 37]
     atom37_mask = restype_atom37_mask[aa_idx]
 
     # [N, 37, 3]
-   # print('atom14===========', atom14.shape)
-   # print('atom37_mask===========', atom37_mask.shape)
-   # print('residx_atom37_to_14=====', residx_atom37_to_14.shape)
+    # print('atom14===========', atom14.shape)
+    # print('atom37_mask===========', atom37_mask.shape)
+    # print('residx_atom37_to_14=====', residx_atom37_to_14.shape)
     atom37 = batch_gather(atom14, residx_atom37_to_14)
-    atom37 = atom37 * atom37_mask[...,None]
+    atom37 = atom37 * atom37_mask[..., None]
 
     return atom37
 
-def torsion_to_position(aatype_idx: torch.Tensor, # [*, N]
-                        backbone_position: torch.Tensor, # [*, N, 4, 3] (N, CA, C, O)
-                        angles: torch.Tensor, # [*, N, 4] (X1, X2, X3, X4)
+
+def torsion_to_position(aatype_idx: torch.Tensor,  # [*, N]
+                        backbone_position: torch.Tensor,  # [*, N, 4, 3] (N, CA, C, O)
+                        angles: torch.Tensor,  # [*, N, 4] (X1, X2, X3, X4)
                         last_step_r,
-                        ): # -> [*, N, 14, 3]
+                        ):  # -> [*, N, 14, 3]
     """Compute Side Chain Atom position using the predicted torsion
     angle and the fixed backbone coordinates.
 
@@ -173,16 +175,16 @@ def torsion_to_position(aatype_idx: torch.Tensor, # [*, N]
 
     # side chain frames [*, N, 8] Rigid
     angles_sin_cos = torch.stack(
-            [
-                torch.sin(angles),
-                torch.cos(angles),
-            ],
-            dim=-1,
-        )
+        [
+            torch.sin(angles),
+            torch.cos(angles),
+        ],
+        dim=-1,
+    )
     sc_to_bb, current_r = rotate_sidechain(aatype_idx, angles_sin_cos, last_step_r)
-  #  print('sc_to_bb ==========================',sc_to_bb.shape)
+    #  print('sc_to_bb ==========================',sc_to_bb.shape)
     # [*, N] Rigid
-   # print('backbone_position =================', backbone_position.shape)
+    # print('backbone_position =================', backbone_position.shape)
     bb_to_gb = geometry.get_gb_trans(backbone_position)
 
     ''''
@@ -195,16 +197,17 @@ def torsion_to_position(aatype_idx: torch.Tensor, # [*, N]
     '''
 
     all_frames_to_global = geometry.Rigid_mult(bb_to_gb[..., None], sc_to_bb)
-#    print('all_frames_to_global==============', all_frames_to_global.shape)
+    #    print('all_frames_to_global==============', all_frames_to_global.shape)
     # [*, N, 14, 3]
     all_pos = frame_to_pos(all_frames_to_global, aatype_idx)
-   # print('all_pose=============', all_pos.shape)
+    # print('all_pose=============', all_pos.shape)
     # [*, N, 37, 3]
- #   print('aaidx type ===================== ',type(aatype_idx))
-#    print('aaidx ===================== ',aatype_idx)
+    #   print('aaidx type ===================== ',type(aatype_idx))
+    #    print('aaidx ===================== ',aatype_idx)
     final_pos = atom14_to_atom37(all_pos, aatype_idx)
 
     return final_pos
+
 
 def get_default_r(restype_idx, angles):
     default_frame = torch.tensor(restype_rigid_group_default_frame,
@@ -218,11 +221,12 @@ def get_default_r(restype_idx, angles):
     default_r = geometry.from_tensor_4x4(res_default_frame)
     return default_r
 
-def torsion_to_frame(aatype_idx: torch.Tensor, # [*, N]
-                    bb_to_gb: geometry.Rigid, # [*, N_rigid]
-                    angles_sin_cos: torch.Tensor, # [*, N, 4, 2] (X1, X2, X3, X4)
-                    last_step_r: geometry.Rigid
-                    ): # -> [*, N, 5] Rigid
+
+def torsion_to_frame(aatype_idx: torch.Tensor,  # [*, N]
+                     bb_to_gb: geometry.Rigid,  # [*, N_rigid]
+                     angles_sin_cos: torch.Tensor,  # [*, N, 4, 2] (X1, X2, X3, X4)
+                     last_step_r: geometry.Rigid
+                     ):  # -> [*, N, 5] Rigid
     """Compute all residue frames given torsion
         angles and the fixed backbone coordinates.
 
@@ -238,7 +242,7 @@ def torsion_to_frame(aatype_idx: torch.Tensor, # [*, N]
     # side chain frames [*, N, 5] Rigid
     # We create 3 dummy identity matrix for omega and other angles which is not used in the frame attention process
     sc_to_bb, current_r = rotate_sidechain(aatype_idx, angles_sin_cos, last_step_r)
-    sc_to_bb = sc_to_bb[..., [0,4,5,6,7]]
+    sc_to_bb = sc_to_bb[..., [0, 4, 5, 6, 7]]
     all_frames_to_global = geometry.Rigid_mult(bb_to_gb[..., None], sc_to_bb)
 
     # [*, N_rigid]
@@ -246,9 +250,10 @@ def torsion_to_frame(aatype_idx: torch.Tensor, # [*, N]
 
     return flatten_frame, current_r
 
-def frame_to_edge(frames: geometry.Rigid, # [*, N_rigid] Rigid
-                  aatype_idx, # [*, N_res]
-                  pad_mask # [*, N_res]
+
+def frame_to_edge(frames: geometry.Rigid,  # [*, N_rigid] Rigid
+                  aatype_idx,  # [*, N_res]
+                  pad_mask  # [*, N_res]
                   ):
     """
     compute edge information between two frames distance, direction, orientation
@@ -265,9 +270,9 @@ def frame_to_edge(frames: geometry.Rigid, # [*, N_rigid] Rigid
     # [*, N_res, 5]
     frame_mask = restype_frame5_mask[aatype_idx, ...]
     frame_mask = frame_mask * pad_mask[..., None]
-    
+
     # [*, N_rigid]
-    flat_mask= torch.flatten(frame_mask, start_dim= -2)
+    flat_mask = torch.flatten(frame_mask, start_dim=-2)
 
     # [*, N_rigid, N_rigid]
     pair_mask = flat_mask[..., None] * flat_mask[..., None, :]
@@ -278,11 +283,9 @@ def frame_to_edge(frames: geometry.Rigid, # [*, N_rigid] Rigid
 
 
 def update_E_idx(frames: geometry.Rigid,  # [*, N_rigid] Rigid
-                pair_mask: torch.Tensor,  # [*, N_res]
-                top_k: int,
-                ):
-
-
+                 pair_mask: torch.Tensor,  # [*, N_res]
+                 top_k: int,
+                 ):
     # [*, N_rigid, N_rigid]
     distance, _, _ = frames.edge()
 
@@ -298,32 +301,30 @@ def update_E_idx(frames: geometry.Rigid,  # [*, N_rigid] Rigid
 
 
 def write_preds_pdb_file(structure, sampled_dfs, out_path, fname, j):
-    
-
     final_atom_mask = restype_atom37_mask[structure["seq"]]
 
     seq_list = torch.from_numpy(structure["seq"])
     coord_list = structure["coords"]
-    
+
     coord_list = torch.from_numpy(coord_list)
     angle_list = torch.from_numpy(sampled_dfs)
-    final_atom_positions = torsion_to_position(seq_list, 
+    final_atom_positions = torsion_to_position(seq_list,
                                                coord_list,
-                                                angle_list) 
-    
+                                               angle_list)
+
     chain_len = len(seq_list)
-    index = np.arange(1,chain_len+1)
+    index = np.arange(1, chain_len + 1)
     resulted_protein = protein.Protein(
-                            aatype=structure["seq"], # [*,N]
-                            atom_positions=final_atom_positions,
-                            atom_mask=final_atom_mask,
-                            residue_index=index, #0,1,2,3,4 range_chain
-                            b_factors=np.zeros_like(final_atom_mask))
-    
-    pdb_str = protein.to_pdb(resulted_protein) 
-    
-    with open(os.path.join(out_path,f"{fname}_generate_{j}.pdb"), 'w') as fp:
-         fp.write(pdb_str)
+        aatype=structure["seq"],  # [*,N]
+        atom_positions=final_atom_positions,
+        atom_mask=final_atom_mask,
+        residue_index=index,  # 0,1,2,3,4 range_chain
+        b_factors=np.zeros_like(final_atom_mask))
+
+    pdb_str = protein.to_pdb(resulted_protein)
+
+    with open(os.path.join(out_path, f"{fname}_generate_{j}.pdb"), 'w') as fp:
+        fp.write(pdb_str)
 
 
 def get_chi_atom_indices():
@@ -352,23 +353,25 @@ def get_chi_atom_indices():
 
     return chi_atom_indices
 
+
 def batched_gather(data, inds, dim=0, no_batch_dims=0):
     ranges = []
     for i, s in enumerate(data.shape[:no_batch_dims]):
-        r = torch.arange(s) # torch.arange N
-        r = r.view(*(*((1,) * i), -1, *((1,) * (len(inds.shape) - i - 1)))) # [N, 1]
+        r = torch.arange(s)  # torch.arange N
+        r = r.view(*(*((1,) * i), -1, *((1,) * (len(inds.shape) - i - 1))))  # [N, 1]
         ranges.append(r)
 
     remaining_dims = [
         slice(None) for _ in range(len(data.shape) - no_batch_dims)
     ]
     remaining_dims[dim - no_batch_dims if dim >= 0 else dim] = inds
-    ranges.extend(remaining_dims) # [Tensor(N,1), Tensor(N,37), slice(None)]
-    return data[ranges] # [N, 37, 3]
+    ranges.extend(remaining_dims)  # [Tensor(N,1), Tensor(N,37), slice(None)]
+    return data[ranges]  # [N, 37, 3]
+
 
 def rigids_to_torsion_angles(
-    aatype_idx,
-    rigids,
+        aatype_idx,
+        rigids,
 ):
     """
     Convert coordinates to torsion angles.
@@ -444,7 +447,6 @@ def rigids_to_torsion_angles(
         dim=-3,
     )
 
-
     torsion_frames = geometry.Rigid.from_3_points(
         torsions_atom_pos[..., 1, :],
         torsions_atom_pos[..., 2, :],
@@ -473,16 +475,15 @@ def rigids_to_torsion_angles(
         [1.0, 1.0, -1.0, 1.0, 1.0, 1.0, 1.0],
     )[((None,) * len(torsion_angles_sin_cos.shape[:-2])) + (slice(None), None)]
 
-    torsion_angles = torch.atan2(torsion_angles_sin_cos[...,0],torsion_angles_sin_cos[...,1])
+    torsion_angles = torch.atan2(torsion_angles_sin_cos[..., 0], torsion_angles_sin_cos[..., 1])
 
     return torsion_angles
 
 
-
 def atom37_to_torsion_angles(
-    aatype,
-    all_atom_positions,
-    all_atom_mask,
+        aatype,
+        all_atom_positions,
+        all_atom_mask,
 ):
     """
     Convert coordinates to torsion angles.
@@ -509,7 +510,6 @@ def atom37_to_torsion_angles(
         "(prefix)torsion_angles_mask" ([*, N_res, 7])
             Torsion angles mask
     """
-
 
     aatype = torch.clamp(aatype, max=20)
     all_atom_positions = torch.tensor(all_atom_positions)
@@ -604,11 +604,10 @@ def atom37_to_torsion_angles(
         eps=1e-8,
     )
 
-    #fourth_atom_rel_pos = torsion_frames.invert().apply(
+    # fourth_atom_rel_pos = torsion_frames.invert().apply(
     #    torsions_atom_pos[..., 3, :]
-    #)
+    # )
     fourth_atom_rel_pos = geometry.invert_rot_mul_vec(torsion_frames, torsions_atom_pos[..., 3, :])
-
 
     torsion_angles_sin_cos = torch.stack(
         [fourth_atom_rel_pos[..., 2], fourth_atom_rel_pos[..., 1]], dim=-1
@@ -645,7 +644,6 @@ def atom37_to_torsion_angles(
             torsion_angles_sin_cos * mirror_torsion_angles[..., None]
     )
 
-
-    torsion_angles = torch.atan2(torsion_angles_sin_cos[...,0],torsion_angles_sin_cos[...,1])
-    alt = torch.atan2(alt_torsion_angles_sin_cos[...,0],alt_torsion_angles_sin_cos[...,1])
+    torsion_angles = torch.atan2(torsion_angles_sin_cos[..., 0], torsion_angles_sin_cos[..., 1])
+    alt = torch.atan2(alt_torsion_angles_sin_cos[..., 0], alt_torsion_angles_sin_cos[..., 1])
     return torsion_angles, alt

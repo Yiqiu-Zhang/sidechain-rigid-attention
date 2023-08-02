@@ -17,9 +17,10 @@ from huggingface_hub import snapshot_download
 
 from foldingdiff import beta_schedules
 from foldingdiff import utils
-from foldingdiff import datasets as dsets
-from foldingdiff import modelling
-from write_preds_pdb import structure_build, geometry
+from foldingdiff import datasets_score as dsets
+from foldingdiff import modelling_score as modelling
+from write_preds_pdb import structure_build_score as structure_build, \
+    geometry
 
 
 @torch.no_grad()
@@ -255,6 +256,8 @@ def p_sample_loop_score(
         sigma_max = torch.pi,
         sigma_min=0.01 * np.pi,
         steps=100,
+
+
 ):
     # [*, N_rigid, 4, 2]
     angles_sin_cos = torch.stack([torch.sin(corrupted_angles), torch.cos(corrupted_angles)], dim=-1)
